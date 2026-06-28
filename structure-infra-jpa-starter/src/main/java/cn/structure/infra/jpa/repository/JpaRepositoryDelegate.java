@@ -44,28 +44,12 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
 
     @Override
     public T save(T entity) {
-        if (entity == null || entityManager == null) {
+        if (entity == null || entityManager == null || entityClass == null) {
             return null;
         }
-        boolean transactionActive = false;
-        try {
-            if (!entityManager.getTransaction().isActive()) {
-                entityManager.getTransaction().begin();
-                transactionActive = true;
-            }
-            T saved = entityManager.merge(entity);
-            if (transactionActive) {
-                entityManager.flush();
-            }
-            log.debug("Saved entity: {}", saved);
-            return saved;
-        } catch (Exception e) {
-            if (transactionActive) {
-                entityManager.getTransaction().rollback();
-            }
-            log.error("Failed to save entity: {}", e.getMessage());
-            throw e;
-        }
+        T saved = entityManager.merge(entity);
+        log.debug("Saved entity: {}", saved);
+        return saved;
     }
 
     @Override

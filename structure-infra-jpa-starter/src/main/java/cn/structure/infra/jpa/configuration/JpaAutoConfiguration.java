@@ -5,7 +5,6 @@ import cn.structure.infra.jpa.repository.JpaDelegateFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
@@ -23,7 +22,6 @@ import jakarta.persistence.EntityManager;
  */
 @AutoConfiguration
 @ConditionalOnClass(name = "org.springframework.data.jpa.repository.JpaRepository")
-@ConditionalOnProperty(prefix = "structure.infra", name = "type", havingValue = "JPA", matchIfMissing = true)
 @EnableJpaRepositories
 @EnableTransactionManagement
 public class JpaAutoConfiguration {
@@ -35,7 +33,7 @@ public class JpaAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(EntityManager.class)
+    @ConditionalOnClass(name = "jakarta.persistence.EntityManager")
     public JpaDelegateBeanPostProcessor jpaDelegateBeanPostProcessor() {
         return new JpaDelegateBeanPostProcessor();
     }
