@@ -1,6 +1,9 @@
 package cn.structure.infra.lowcode.model;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * 字段 Schema 定义
@@ -13,6 +16,9 @@ import lombok.Data;
  * @since 2026/6/29
  */
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class FieldSchema {
 
     /**
@@ -33,16 +39,19 @@ public class FieldSchema {
     /**
      * 字段长度（字符串类型使用）
      */
+    @Builder.Default
     private int length = 255;
 
     /**
      * 精度（十进制类型使用，总位数）
      */
+    @Builder.Default
     private int precision = 10;
 
     /**
      * 小数位数（十进制类型使用）
      */
+    @Builder.Default
     private int scale = 2;
 
     /**
@@ -58,6 +67,7 @@ public class FieldSchema {
     /**
      * 是否允许为空
      */
+    @Builder.Default
     private boolean nullable = true;
 
     /**
@@ -78,6 +88,7 @@ public class FieldSchema {
     /**
      * 自动填充策略
      */
+    @Builder.Default
     private AutoFillType autoFill = AutoFillType.NONE;
 
     /**

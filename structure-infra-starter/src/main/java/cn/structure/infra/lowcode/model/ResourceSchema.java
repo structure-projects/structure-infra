@@ -1,6 +1,9 @@
 package cn.structure.infra.lowcode.model;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -16,6 +19,9 @@ import java.util.Map;
  * @since 2026/6/29
  */
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ResourceSchema {
 
     /**
@@ -41,6 +47,7 @@ public class ResourceSchema {
     /**
      * 字段定义集合（保持插入顺序）
      */
+    @Builder.Default
     private Map<String, FieldSchema> fields = new LinkedHashMap<>();
 
     /**

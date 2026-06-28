@@ -1,5 +1,6 @@
 package cn.structure.infra.sample.mongodb.config;
 
+import org.bson.Document;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -8,27 +9,36 @@ import org.springframework.data.mongodb.MongoDatabaseFactory;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.convert.MappingMongoConverter;
 import org.springframework.data.mongodb.core.convert.MongoConverter;
+import org.springframework.data.mongodb.core.index.Index;
+import org.springframework.data.mongodb.core.index.IndexOperations;
 import org.springframework.data.mongodb.core.mapping.MongoMappingContext;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @TestConfiguration
 public class MockMongoConfiguration {
 
     private final Map<Class<?>, Map<Long, Object>> dataStore = new HashMap<>();
     private long idGenerator = 1;
+
+    private final Map<String, Map<Object, Document>> docCollections = new ConcurrentHashMap<>();
+    private final AtomicLong docIdGenerator = new AtomicLong(1);
+    private final List<String> insertCalls = new ArrayList<>();
 
     private final MongoMappingContext mappingContext = new MongoMappingContext();
     private final MongoConverter converter;
@@ -42,6 +52,13 @@ public class MockMongoConfiguration {
     public void reset() {
         dataStore.clear();
         idGenerator = 1;
+        docCollections.clear();
+        docIdGenerator.set(1);
+        insertCalls.clear();
+    }
+
+    public List<String> getInsertCalls() {
+        return insertCalls;
     }
 
     private MongoConverter createMongoConverter() {
@@ -160,6 +177,135 @@ public class MockMongoConfiguration {
             return classStore != null ? (long) classStore.size() : 0L;
         });
 
+        // ---------- Document 版本 API（低代码仓储使用） ----------
+
+        // collectionExists
+        when(template.collectionExists(anyString())).thenAnswer(invocation -> {
+            String collectionName = invocation.getArgument(0);
+            return docCollections.containsKey(collectionName);
+        });
+
+        // createCollection
+        doAnswer(invocation -> {
+            String collectionName = invocation.getArgument(0);
+            docCollections.putIfAbsent(collectionName, new LinkedHashMap<>());
+            return null;
+        }).when(template).createCollection(anyString());
+
+        // dropCollection
+        doAnswer(invocation -> {
+            String collectionName = invocation.getArgument(0);
+            docCollections.remove(collectionName);
+            return null;
+        }).when(template).dropCollection(anyString());
+
+        // indexOps
+        IndexOperations indexOps = mock(IndexOperations.class);
+        when(indexOps.ensureIndex(any(Index.class))).thenReturn("");
+        when(template.indexOps(anyString())).thenReturn(indexOps);
+
+        // findOne with collectionName
+        when(template.findOne(any(Query.class), any(Class.class), anyString())).thenAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
+            String collectionName = invocation.getArgument(2);
+            Map<Object, Document> collection = docCollections.get(collectionName);
+            if (collection == null || collection.isEmpty()) {
+                return null;
+            }
+            List<Document> allDocs = new ArrayList<>(collection.values());
+            List<Document> filtered = filterDocsByQuery(query, allDocs);
+            return filtered.isEmpty() ? null : filtered.get(0);
+        });
+
+        // find with collectionName
+        when(template.find(any(Query.class), any(Class.class), anyString())).thenAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
+            String collectionName = invocation.getArgument(2);
+            Map<Object, Document> collection = docCollections.get(collectionName);
+            if (collection == null || collection.isEmpty()) {
+                return new ArrayList<Document>();
+            }
+            List<Document> allDocs = new ArrayList<>(collection.values());
+            return filterDocsByQuery(query, allDocs);
+        });
+
+        // insert with collectionName
+        when(template.insert(any(Document.class), anyString())).thenAnswer(invocation -> {
+            Document doc = invocation.getArgument(0);
+            String collectionName = invocation.getArgument(1);
+            insertCalls.add("insert(Document, String): " + collectionName);
+            Map<Object, Document> collection = docCollections.computeIfAbsent(collectionName, k -> new LinkedHashMap<>());
+
+            String idField = "id";
+            if (!doc.containsKey(idField) || doc.get(idField) == null) {
+                doc.put(idField, docIdGenerator.getAndIncrement());
+            }
+            Object id = doc.get(idField);
+            collection.put(id, doc);
+            return doc;
+        });
+
+        // save with collectionName
+        when(template.save(any(Document.class), anyString())).thenAnswer(invocation -> {
+            Document doc = invocation.getArgument(0);
+            String collectionName = invocation.getArgument(1);
+            Map<Object, Document> collection = docCollections.computeIfAbsent(collectionName, k -> new LinkedHashMap<>());
+
+            String idField = "id";
+            if (!doc.containsKey(idField) || doc.get(idField) == null) {
+                doc.put(idField, docIdGenerator.getAndIncrement());
+            }
+            Object id = doc.get(idField);
+            collection.put(id, doc);
+            return doc;
+        });
+
+        // updateFirst with collectionName
+        when(template.updateFirst(any(Query.class), any(Update.class), anyString())).thenAnswer(invocation -> {
+            String collectionName = invocation.getArgument(2);
+            Map<Object, Document> collection = docCollections.get(collectionName);
+            if (collection == null || collection.isEmpty()) {
+                return null;
+            }
+            Document firstDoc = collection.values().iterator().next();
+            Update update = invocation.getArgument(1);
+            Map<String, Object> updates = extractDocUpdateValues(update);
+            firstDoc.putAll(updates);
+            return null;
+        });
+
+        // remove with query and collectionName
+        doAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
+            String collectionName = invocation.getArgument(1);
+            Map<Object, Document> collection = docCollections.get(collectionName);
+            if (collection == null || collection.isEmpty()) {
+                return null;
+            }
+            List<Document> allDocs = new ArrayList<>(collection.values());
+            List<Document> filtered = filterDocsByQuery(query, allDocs);
+            for (Document doc : filtered) {
+                Object id = doc.get("id");
+                if (id != null) {
+                    collection.remove(id);
+                }
+            }
+            return null;
+        }).when(template).remove(any(Query.class), anyString());
+
+        // count with collectionName
+        when(template.count(any(Query.class), anyString())).thenAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
+            String collectionName = invocation.getArgument(1);
+            Map<Object, Document> collection = docCollections.get(collectionName);
+            if (collection == null || collection.isEmpty()) {
+                return 0L;
+            }
+            List<Document> allDocs = new ArrayList<>(collection.values());
+            List<Document> filtered = filterDocsByQuery(query, allDocs);
+            return (long) filtered.size();
+        });
+
         when(template.getConverter()).thenReturn(converter);
 
         return template;
@@ -256,6 +402,92 @@ public class MockMongoConfiguration {
                 field.set(po, id);
             }
         }
+    }
+
+    /**
+     * 提取 Update 对象中的更新值（Document 版本）
+     */
+    private Map<String, Object> extractDocUpdateValues(Update update) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            Field updatesField = Update.class.getDeclaredField("updates");
+            updatesField.setAccessible(true);
+            Object updates = updatesField.get(update);
+            if (updates instanceof List) {
+                for (Object u : (List<?>) updates) {
+                    try {
+                        Field keyField = u.getClass().getDeclaredField("key");
+                        Field valueField = u.getClass().getDeclaredField("value");
+                        keyField.setAccessible(true);
+                        valueField.setAccessible(true);
+                        String key = (String) keyField.get(u);
+                        Object value = valueField.get(u);
+                        result.put(key, value);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return result;
+    }
+
+    /**
+     * 根据 Query 条件过滤 Document 列表
+     */
+    private List<Document> filterDocsByQuery(Query query, List<Document> docs) {
+        try {
+            Field criteriaField = Query.class.getDeclaredField("criteria");
+            criteriaField.setAccessible(true);
+            Object criteriaObj = criteriaField.get(query);
+
+            if (criteriaObj instanceof Criteria criteria) {
+                List<Map.Entry<String, Object>> conditions = extractDocConditions(criteria);
+                return docs.stream()
+                        .filter(doc -> matchesDocConditions(doc, conditions))
+                        .collect(Collectors.toList());
+            }
+        } catch (Exception ignored) {
+        }
+        return docs;
+    }
+
+    /**
+     * 从 Criteria 中提取查询条件
+     */
+    private List<Map.Entry<String, Object>> extractDocConditions(Criteria criteria) {
+        List<Map.Entry<String, Object>> conditions = new ArrayList<>();
+        try {
+            Field keyField = Criteria.class.getDeclaredField("key");
+            Field valueField = Criteria.class.getDeclaredField("value");
+            keyField.setAccessible(true);
+            valueField.setAccessible(true);
+
+            Object key = keyField.get(criteria);
+            Object value = valueField.get(criteria);
+
+            if (key != null && value != null) {
+                conditions.add(Map.entry(key.toString(), value));
+            }
+        } catch (Exception ignored) {
+        }
+        return conditions;
+    }
+
+    /**
+     * 判断 Document 是否匹配查询条件
+     */
+    private boolean matchesDocConditions(Document doc, List<Map.Entry<String, Object>> conditions) {
+        for (Map.Entry<String, Object> condition : conditions) {
+            String fieldName = condition.getKey();
+            Object expectedValue = condition.getValue();
+
+            Object actualValue = doc.get(fieldName);
+            if (actualValue == null || !actualValue.equals(expectedValue)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Bean
