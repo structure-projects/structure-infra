@@ -7,6 +7,7 @@ import cn.structure.infra.repository.RepositoryType;
 import cn.structure.infra.sample.infra.po.UserPO;
 import cn.structure.infra.sample.infra.repository.delegate.UserRepositoryDelegate;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 /**
  * 用户读代理（READ）
@@ -22,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
  * delegateType = READ 表示这是读代理
  */
 @Slf4j
+@Component
 @DelegateFor(
         name = "userCqrsRepository",
         po = UserPO.class,

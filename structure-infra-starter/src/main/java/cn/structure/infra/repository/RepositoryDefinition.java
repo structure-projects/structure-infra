@@ -64,6 +64,24 @@ public class RepositoryDefinition {
     private TimeUnit cacheTimeUnit;
 
     /**
+     * 是否启用 CQRS 读写分离
+     * <p>
+     * 启用后，读操作使用 readDelegate，写操作使用 baseDelegate
+     * <p>
+     * 必须与 readDelegateClass 同时配置才生效
+     */
+    private boolean cqrs;
+
+    /**
+     * 读代理类
+     * <p>
+     * 指定读操作使用的代理类，用于 CQRS 读写分离
+     * <p>
+     * 必须与 cqrs=true 同时配置才生效
+     */
+    private Class<?> readDelegateClass;
+
+    /**
      * 原始注解
      */
     private Repository annotation;
@@ -86,6 +104,8 @@ public class RepositoryDefinition {
         definition.setCache(annotation.cache());
         definition.setCacheTime(annotation.cacheTime());
         definition.setCacheTimeUnit(annotation.cacheTimeUnit());
+        definition.setCqrs(annotation.cqrs());
+        definition.setReadDelegateClass(annotation.readDelegateClass());
         definition.setAnnotation(annotation);
         return definition;
     }

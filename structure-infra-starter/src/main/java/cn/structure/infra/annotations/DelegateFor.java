@@ -1,5 +1,6 @@
 package cn.structure.infra.annotations;
 
+import cn.structure.infra.repository.DelegateType;
 import cn.structure.infra.repository.RepositoryType;
 
 import java.lang.annotation.*;
@@ -11,9 +12,17 @@ import java.lang.annotation.*;
  * <p>
  * 示例：
  * <pre>
- * &#64;DelegateFor(name = "userRepository", po = UserPO.class)
+ * &#64;DelegateFor(name = "userRepository", po = UserPO.class, delegateType = DelegateType.BASE)
  * public class UserMybatisPlusDelegate extends MybatisPlusRepositoryDelegate&lt;UserPO, Long&gt; {
  *     // 实现
+ * }
+ * </pre>
+ * <p>
+ * CQRS 模式下可以指定读代理：
+ * <pre>
+ * &#64;DelegateFor(name = "userRepository", po = UserPO.class, delegateType = DelegateType.READ)
+ * public class UserReadDelegate extends ElasticsearchRepositoryDelegate&lt;UserPO, Long&gt; {
+ *     // 读操作实现
  * }
  * </pre>
  *
@@ -61,4 +70,14 @@ public @interface DelegateFor {
      * @return 优先级，数字越大优先级越高
      */
     int priority() default 0;
+
+    /**
+     * 委托类型
+     * <p>
+     * - BASE: 基础代理，承担写操作和默认读操作
+     * - READ: 读代理，专门承担读操作（CQRS 模式下使用）
+     *
+     * @return 委托类型
+     */
+    DelegateType delegateType() default DelegateType.BASE;
 }

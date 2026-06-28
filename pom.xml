@@ -32,7 +32,7 @@
         <module>structure-infra-jpa-starter</module>
         <module>structure-infra-mongodb-starter</module>
         <module>structure-infra-elasticsearch-starter</module>
-<!--        <module>structure-infra-sample</module>-->
+        <module>structure-infra-sample</module>
     </modules>
 
     <dependencyManagement>

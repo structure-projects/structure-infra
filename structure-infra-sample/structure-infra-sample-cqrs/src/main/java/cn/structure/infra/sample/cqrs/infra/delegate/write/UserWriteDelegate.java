@@ -3,11 +3,11 @@ package cn.structure.infra.sample.cqrs.infra.delegate.write;
 import cn.structure.infra.annotations.DelegateFor;
 import cn.structure.infra.mybatis.plus.repository.MybatisPlusRepositoryDelegate;
 import cn.structure.infra.repository.DelegateType;
-import cn.structure.infra.repository.InMemoryRepositoryDelegate;
 import cn.structure.infra.repository.RepositoryType;
 import cn.structure.infra.sample.infra.po.UserPO;
 import cn.structure.infra.sample.infra.repository.delegate.UserRepositoryDelegate;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 /**
  * 用户写代理（BASE）
@@ -23,13 +23,14 @@ import lombok.extern.slf4j.Slf4j;
  * delegateType = BASE 表示这是基础/写代理
  */
 @Slf4j
+@Component
 @DelegateFor(
         name = "userCqrsRepository",
         po = UserPO.class,
         delegateType = DelegateType.BASE,
         type = RepositoryType.MYBATIS_PLUS
 )
-public class UserWriteDelegate  extends MybatisPlusRepositoryDelegate<UserPO, Long> implements UserRepositoryDelegate {
+public class UserWriteDelegate extends MybatisPlusRepositoryDelegate<UserPO, Long> implements UserRepositoryDelegate {
 
     @Override
     public UserPO finByName(String name) {

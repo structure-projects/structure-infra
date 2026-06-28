@@ -79,5 +79,26 @@ public @interface Repository {
      */
     TimeUnit cacheTimeUnit() default TimeUnit.SECONDS;
 
+    /**
+     * 是否启用 CQRS 读写分离
+     * <p>
+     * 启用后，读操作使用 readDelegate，写操作使用 baseDelegate
+     * <p>
+     * 必须与 readDelegateClass 配合使用，两者同时成立时才启用读代理
+     *
+     * @return true 启用 CQRS
+     */
+    boolean cqrs() default false;
+
+    /**
+     * 读代理类
+     * <p>
+     * 指定读操作使用的代理类，用于 CQRS 读写分离
+     * <p>
+     * 必须与 cqrs=true 配合使用，两者同时成立时才启用读代理
+     *
+     * @return 读代理类
+     */
+    Class<?> readDelegateClass() default Object.class;
 
 }

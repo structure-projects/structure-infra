@@ -3,6 +3,7 @@ package cn.structure.infra.sample.mongodb.config;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.mapping.context.MappingContext;
 import org.springframework.data.mongodb.MongoDatabaseFactory;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.convert.MappingMongoConverter;
@@ -45,7 +46,7 @@ public class MockMongoConfiguration {
 
     private MongoConverter createMongoConverter() {
         MappingMongoConverter converter = mock(MappingMongoConverter.class);
-        when(converter.getMappingContext()).thenReturn((org.springframework.data.mapping.context.MappingContext) mappingContext);
+        when(converter.getMappingContext()).thenReturn((MappingContext) mappingContext);
         return converter;
     }
 
