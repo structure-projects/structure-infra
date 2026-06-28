@@ -1,0 +1,33 @@
+server:
+  port: 8081
+
+structure:
+  infra:
+    type: MONGODB
+  data-scope:
+    field-config:
+      org-id-field: orgId
+      dept-id-field: deptId
+      user-id-field: userId
+    enabled: true
+    scan-packages:
+      - cn.structured.datascope.example.mongodb
+  security:
+    enabled: true
+    antMatchers:
+      unAuthenticated:
+        - /**
+spring:
+  application:
+    name: mongodb-example
+  main:
+    allow-circular-references: true
+  mongodb:
+    uri: mongodb://user:123456@172.24.20.15:27017/test?authSource=admin&authMechanism=SCRAM-SHA-1
+
+
+logging:
+  level:
+    org.springframework.data.mongodb: DEBUG
+    cn.structure.infra.repository: DEBUG
+    cn.structure.infra.mongodb: INFO

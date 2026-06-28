@@ -95,7 +95,11 @@
                 <artifactId>structure-security-permission-starter</artifactId>
                 <version>${structure-security.version}</version>
             </dependency>
-
+            <dependency>
+                <groupId>cn.structured</groupId>
+                <artifactId>structure-security-jwt-starter</artifactId>
+                <version>${structure-security.version}</version>
+            </dependency>
             <!-- 数据权限 -->
             <dependency>
                 <groupId>cn.structured</groupId>

@@ -1,0 +1,33 @@
+server:
+  port: 8082
+
+structure:
+  infra:
+    type: ELASTICSEARCH
+# 数据范围管理配置
+  data-scope:
+    enabled: true
+    auto-filter-response: true
+    scan-packages:
+      - cn.structured.datascope.example.elasticsearch.dto
+    field-config:
+      org-id-field: orgId
+      dept-id-field: deptId
+  security:
+    enabled: true
+    antMatchers:
+      unAuthenticated:
+        - /**
+spring:
+  main:
+    allow-circular-references: true
+  elasticsearch:
+    uris: http://172.24.20.15:9200
+    username: elastic
+    password: Elastic_aXbnMp
+
+logging:
+  level:
+    org.springframework.data.elasticsearch: DEBUG
+    cn.structure.infra.repository: DEBUG
+    cn.structure.infra.elasticsearch: INFO
