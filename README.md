@@ -33,7 +33,13 @@ structure-pro-infra/
 ├── structure-infra-jpa-starter/        # JPA 适配
 ├── structure-infra-mongodb-starter/    # MongoDB 适配
 ├── structure-infra-elasticsearch-starter/ # Elasticsearch 适配
-└── structure-infra-sample/             # 示例模块（已注释）
+└── structure-infra-sample/             # 示例模块
+    ├── structure-infra-sample-core/        # 共享核心（Entity、PO、Repository接口）
+    ├── structure-infra-sample-mybatis/     # MyBatis Plus 示例
+    ├── structure-infra-sample-jpa/         # JPA 示例
+    ├── structure-infra-sample-mongodb/     # MongoDB 示例（含 REST API）
+    ├── structure-infra-sample-elasticsearch/ # Elasticsearch 示例（含 REST API）
+    └── structure-infra-sample-cqrs/        # CQRS 读写分离示例
 ```
 
 ## 核心概念
@@ -88,6 +94,35 @@ structure-pro-infra/
 | `READ` | 读代理，专门承担读操作（CQRS 模式下使用） |
 
 ## 快速开始
+
+### 示例模块
+
+项目提供了完整的示例模块，包含 REST API 接口，可用于快速测试和学习：
+
+**MongoDB 示例**（端口 8081）：
+```bash
+mvn spring-boot:run -pl structure-infra-sample/structure-infra-sample-mongodb
+```
+
+**Elasticsearch 示例**（端口 8082）：
+```bash
+mvn spring-boot:run -pl structure-infra-sample/structure-infra-sample-elasticsearch
+```
+
+**REST API 接口**（两个示例模块接口一致）：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/users` | 创建用户 |
+| GET | `/api/users/{id}` | 根据ID查询 |
+| GET | `/api/users/list` | 查询全部用户列表 |
+| GET | `/api/users/page?page=1&size=10` | 分页查询 |
+| PUT | `/api/users/{id}` | 更新用户 |
+| DELETE | `/api/users/{id}` | 删除用户 |
+| POST | `/api/users/batch` | 批量创建 |
+| GET | `/api/users/count` | 查询总数 |
+
+详细示例模块说明请参考 [SAMPLE_MODULES.md](./SAMPLE_MODULES.md)。
 
 ### 1. 添加依赖
 
