@@ -184,7 +184,18 @@ class MongoLowCodeRepositoryTest {
                 return new ArrayList<Document>();
             }
             List<Document> allDocs = new ArrayList<>(collection.values());
-            return filterDocsByQuery(query, allDocs);
+            List<Document> filtered = filterDocsByQuery(query, allDocs);
+            
+            long skip = query.getSkip();
+            int limit = query.getLimit();
+            
+            List<Document> result = new ArrayList<>();
+            int start = (int) skip;
+            int end = limit > 0 ? Math.min(start + limit, filtered.size()) : filtered.size();
+            if (start < filtered.size()) {
+                result.addAll(filtered.subList(start, end));
+            }
+            return result;
         });
 
         // insert with collectionName
@@ -331,21 +342,14 @@ class MongoLowCodeRepositoryTest {
     private Map<String, Object> extractUpdateValues(Update update) {
         Map<String, Object> result = new LinkedHashMap<>();
         try {
-            Field updatesField = Update.class.getDeclaredField("updates");
-            updatesField.setAccessible(true);
-            Object updates = updatesField.get(update);
-            if (updates instanceof List) {
-                for (Object u : (List<?>) updates) {
-                    try {
-                        Field keyField = u.getClass().getDeclaredField("key");
-                        Field valueField = u.getClass().getDeclaredField("value");
-                        keyField.setAccessible(true);
-                        valueField.setAccessible(true);
-                        String key = (String) keyField.get(u);
-                        Object value = valueField.get(u);
-                        result.put(key, value);
-                    } catch (Exception ignored) {
-                    }
+            Field modifierOpsField = Update.class.getDeclaredField("modifierOps");
+            modifierOpsField.setAccessible(true);
+            Object modifierOps = modifierOpsField.get(update);
+            if (modifierOps instanceof Map) {
+                Map<?, ?> opsMap = (Map<?, ?>) modifierOps;
+                Object setDoc = opsMap.get("$set");
+                if (setDoc instanceof Document) {
+                    result.putAll((Document) setDoc);
                 }
             }
         } catch (Exception ignored) {
