@@ -10,7 +10,6 @@ import org.springframework.beans.BeanUtils;
 
 import java.util.List;
 import java.util.Optional;
-
 @Setter
 public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> implements ICrudRepository<T, ID> {
 
@@ -30,6 +29,11 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         this.poClass = poClass;
     }
 
+    /**
+     * 获取基础仓储代理
+     *
+     * @return 基础仓储代理
+     */
     public D getBaseDelegate() {
         return baseDelegate;
     }
@@ -105,6 +109,7 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         return tPage;
     }
 
+    @Override
     public List<T> saveBatch(List<T> entities) {
         if (entities == null || entities.isEmpty()) {
             return List.of();
@@ -118,10 +123,12 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
                 .toList();
     }
 
+    @Override
     public void removeBatchByIds(List<ID> ids) {
         baseDelegate.removeBatchByIds(ids);
     }
 
+    @Override
     public List<T> listByIds(List<ID> ids) {
         List<P> poList = baseDelegate.listByIds(ids);
         if (poList == null || poList.isEmpty()) {
@@ -132,10 +139,12 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
                 .toList();
     }
 
+    @Override
     public long count(T entity) {
         return baseDelegate.count(toPo(entity));
     }
 
+    @Override
     public boolean exists(T entity) {
         return baseDelegate.exists(toPo(entity));
     }

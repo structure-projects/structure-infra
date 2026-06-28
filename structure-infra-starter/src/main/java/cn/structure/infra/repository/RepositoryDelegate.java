@@ -24,42 +24,4 @@ import java.util.List;
  */
 public interface RepositoryDelegate<T, ID> extends ICrudRepository<T, ID> {
 
-    /**
-     * 批量保存
-     *
-     * @param entities 实体列表
-     * @return 保存后的实体列表
-     */
-    List<T> saveBatch(List<T> entities);
-
-    /**
-     * 批量删除
-     *
-     * @param ids 主键列表
-     */
-    void removeBatchByIds(List<ID> ids);
-
-    /**
-     * 根据ID列表查询
-     *
-     * @param ids 主键列表
-     * @return 实体列表
-     */
-    List<T> listByIds(List<ID> ids);
-
-    /**
-     * 统计数量
-     *
-     * @param condition 条件
-     * @return 数量
-     */
-    long count(T condition);
-
-    /**
-     * 判断是否存在
-     *
-     * @param condition 条件
-     * @return 是否存在
-     */
-    boolean exists(T condition);
 }
