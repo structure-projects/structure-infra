@@ -1,4 +1,4 @@
-package cn.structure.infra.sample.mongodb.lowcode;
+package cn.structure.infra.sample.elasticsearch.lowcode;
 
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
@@ -18,11 +18,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.convert.MongoConverter;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.IndexOperations;
+import org.springframework.data.elasticsearch.core.SearchHit;
+import org.springframework.data.elasticsearch.core.SearchHits;
+import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
+import org.springframework.data.elasticsearch.core.query.IndexQuery;
+import org.springframework.data.elasticsearch.core.query.Query;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -38,46 +41,46 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
- * MongoDB 低代码仓储测试 - 通过 LowCodeRepository 接口测试
+ * Elasticsearch 低代码仓储测试 - 通过 LowCodeRepository 接口测试
  * <p>
- * 验证 LowCodeRepositoryRouter 和 MongoDB 低代码存储的完整集成。
+ * 验证 LowCodeRepositoryRouter 和 Elasticsearch 低代码存储的完整集成。
  *
  * @author chuck
  * @since 2026/6/29
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("MongoDB 低代码仓储测试 - LowCodeRepository 接口")
-class MongoLowCodeRepositoryTest {
+@DisplayName("Elasticsearch 低代码仓储测试 - LowCodeRepository 接口")
+class ElasticsearchLowCodeRepositoryTest {
 
     @Mock
-    private MongoTemplate mongoTemplate;
+    private ElasticsearchOperations elasticsearchOperations;
 
     @Mock
-    private MongoConverter mongoConverter;
+    private IndexOperations indexOperations;
 
     private LowCodeRepository lowCodeRepository;
 
-    private final Map<String, Map<Object, org.bson.Document>> docCollections = new LinkedHashMap<>();
-    private final AtomicLong docIdGenerator = new AtomicLong(1);
+    private final Map<String, Map<String, Map<String, Object>>> docStore = new LinkedHashMap<>();
+    private final AtomicLong idGenerator = new AtomicLong(1);
 
     private static final String RESOURCE_NAME = "article";
-    private static final String COLLECTION_NAME = "t_lowcode_article";
+    private static final String INDEX_NAME = "t_lowcode_article";
 
     @BeforeEach
     void setUp() {
-        docCollections.clear();
-        docIdGenerator.set(1);
+        docStore.clear();
+        idGenerator.set(1);
         setupMock();
 
         ResourceSchema schema = ResourceSchema.builder()
                 .resourceName(RESOURCE_NAME)
-                .tableName(COLLECTION_NAME)
+                .tableName(INDEX_NAME)
                 .build();
 
         schema.addField(FieldSchema.builder()
                 .name("id")
-                .type(FieldType.LONG)
+                .type(FieldType.STRING)
                 .primaryKey(true)
                 .build());
 
@@ -134,10 +137,10 @@ class MongoLowCodeRepositoryTest {
                 .build());
 
         RepositoryConfig config = new RepositoryConfig();
-        config.setType(StorageType.MONGODB);
+        config.setType(StorageType.ELASTICSEARCH);
 
         cn.structure.infra.lowcode.repository.LowCodeRepoFactory factory =
-                new cn.structure.infra.mongodb.lowcode.MongoLowCodeRepoFactory(mongoTemplate);
+                new cn.structure.infra.elasticsearch.lowcode.ElasticsearchLowCodeRepoFactory(elasticsearchOperations);
 
         List<cn.structure.infra.lowcode.repository.LowCodeRepoFactory> factories = new ArrayList<>();
         factories.add(factory);
@@ -149,208 +152,238 @@ class MongoLowCodeRepositoryTest {
 
     @SuppressWarnings("unchecked")
     private void setupMock() {
-        when(mongoTemplate.getConverter()).thenReturn(mongoConverter);
+        when(elasticsearchOperations.indexOps(any(IndexCoordinates.class))).thenReturn(indexOperations);
+        when(indexOperations.exists()).thenReturn(true);
 
-        when(mongoTemplate.collectionExists(anyString())).thenReturn(true);
+        when(elasticsearchOperations.index(any(IndexQuery.class), any(IndexCoordinates.class))).thenAnswer(invocation -> {
+            IndexQuery indexQuery = invocation.getArgument(0);
+            String id = indexQuery.getId();
+            Object object = indexQuery.getObject();
 
-        doAnswer(invocation -> {
-            String collectionName = invocation.getArgument(0);
-            docCollections.remove(collectionName);
-            return null;
-        }).when(mongoTemplate).dropCollection(anyString());
-
-        when(mongoTemplate.findOne(any(Query.class), any(Class.class), anyString())).thenAnswer(invocation -> {
-            Query query = invocation.getArgument(0);
-            String collectionName = invocation.getArgument(2);
-            Map<Object, org.bson.Document> collection = docCollections.get(collectionName);
-            if (collection == null || collection.isEmpty()) {
-                return null;
+            if (object instanceof Map) {
+                Map<String, Object> doc = new LinkedHashMap<>((Map<String, Object>) object);
+                if (id == null || id.isEmpty()) {
+                    id = String.valueOf(idGenerator.getAndIncrement());
+                }
+                doc.put("id", id);
+                docStore.computeIfAbsent(INDEX_NAME, k -> new LinkedHashMap<>()).put(id, doc);
+                return id;
             }
-            List<org.bson.Document> allDocs = new ArrayList<>(collection.values());
-            List<org.bson.Document> filtered = filterDocsByQuery(query, allDocs);
-            return filtered.isEmpty() ? null : filtered.get(0);
+            return id != null ? id : String.valueOf(idGenerator.getAndIncrement());
         });
 
-        when(mongoTemplate.find(any(Query.class), any(Class.class), anyString())).thenAnswer(invocation -> {
-            Query query = invocation.getArgument(0);
-            String collectionName = invocation.getArgument(2);
-            Map<Object, org.bson.Document> collection = docCollections.get(collectionName);
-            if (collection == null || collection.isEmpty()) {
-                return new ArrayList<>();
-            }
-            List<org.bson.Document> allDocs = new ArrayList<>(collection.values());
-            List<org.bson.Document> filtered = filterDocsByQuery(query, allDocs);
-
-            long skip = query.getSkip();
-            int limit = query.getLimit();
-
-            List<org.bson.Document> result = new ArrayList<>();
-            int start = (int) skip;
-            int end = limit > 0 ? Math.min(start + limit, filtered.size()) : filtered.size();
-            if (start < filtered.size()) {
-                result.addAll(filtered.subList(start, end));
-            }
-            return result;
-        });
-
-        when(mongoTemplate.insert(any(org.bson.Document.class), anyString())).thenAnswer(invocation -> {
-            org.bson.Document doc = invocation.getArgument(0);
-            String collectionName = invocation.getArgument(1);
-            Map<Object, org.bson.Document> collection = docCollections.computeIfAbsent(collectionName, k -> new LinkedHashMap<>());
-
-            String idField = "id";
-            if (!doc.containsKey(idField) || doc.get(idField) == null) {
-                doc.put(idField, docIdGenerator.getAndIncrement());
-            }
-            Object id = doc.get(idField);
-            collection.put(id, doc);
-            return doc;
-        });
-
-        when(mongoTemplate.save(any(org.bson.Document.class), anyString())).thenAnswer(invocation -> {
-            org.bson.Document doc = invocation.getArgument(0);
-            String collectionName = invocation.getArgument(1);
-            Map<Object, org.bson.Document> collection = docCollections.computeIfAbsent(collectionName, k -> new LinkedHashMap<>());
-
-            String idField = "id";
-            if (!doc.containsKey(idField) || doc.get(idField) == null) {
-                doc.put(idField, docIdGenerator.getAndIncrement());
-            }
-            Object id = doc.get(idField);
-            collection.put(id, doc);
-            return doc;
-        });
-
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), anyString())).thenAnswer(invocation -> {
-            Query query = invocation.getArgument(0);
-            String collectionName = invocation.getArgument(2);
-            Map<Object, org.bson.Document> collection = docCollections.get(collectionName);
-            if (collection == null || collection.isEmpty()) {
-                return null;
-            }
-            List<org.bson.Document> allDocs = new ArrayList<>(collection.values());
-            List<org.bson.Document> filtered = filterDocsByQuery(query, allDocs);
-            if (!filtered.isEmpty()) {
-                org.bson.Document firstDoc = filtered.get(0);
-                Update update = invocation.getArgument(1);
-                Map<String, Object> updates = extractUpdateValues(update);
-                firstDoc.putAll(updates);
-            }
-            return null;
-        });
-
-        doAnswer(invocation -> {
-            Query query = invocation.getArgument(0);
-            String collectionName = invocation.getArgument(1);
-            Map<Object, org.bson.Document> collection = docCollections.get(collectionName);
-            if (collection == null || collection.isEmpty()) {
-                return null;
-            }
-            List<org.bson.Document> allDocs = new ArrayList<>(collection.values());
-            List<org.bson.Document> filtered = filterDocsByQuery(query, allDocs);
-            for (org.bson.Document doc : filtered) {
-                Object id = doc.get("id");
-                if (id != null) {
-                    collection.remove(id);
+        when(elasticsearchOperations.get(anyString(), any(Class.class), any(IndexCoordinates.class))).thenAnswer(invocation -> {
+            String id = invocation.getArgument(0);
+            Map<String, Map<String, Object>> index = docStore.get(INDEX_NAME);
+            if (index != null) {
+                Map<String, Object> doc = index.get(id);
+                if (doc != null) {
+                    return new LinkedHashMap<>(doc);
                 }
             }
             return null;
-        }).when(mongoTemplate).remove(any(Query.class), anyString());
+        });
 
-        when(mongoTemplate.count(any(Query.class), anyString())).thenAnswer(invocation -> {
-            Query query = invocation.getArgument(0);
-            String collectionName = invocation.getArgument(1);
-            Map<Object, org.bson.Document> collection = docCollections.get(collectionName);
-            if (collection == null || collection.isEmpty()) {
-                return 0L;
+        when(elasticsearchOperations.delete(anyString(), any(IndexCoordinates.class))).thenAnswer(invocation -> {
+            String id = invocation.getArgument(0);
+            Map<String, Map<String, Object>> index = docStore.get(INDEX_NAME);
+            if (index != null) {
+                index.remove(id);
             }
-            List<org.bson.Document> allDocs = new ArrayList<>(collection.values());
-            List<org.bson.Document> filtered = filterDocsByQuery(query, allDocs);
+            return id;
+        });
+
+        when(elasticsearchOperations.search(any(Query.class), any(Class.class), any(IndexCoordinates.class))).thenAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
+            Map<String, Object> queryParams = extractQueryParams(query);
+
+            Map<String, Map<String, Object>> index = docStore.get(INDEX_NAME);
+            List<Map<String, Object>> allDocs = new ArrayList<>();
+            if (index != null) {
+                allDocs.addAll(index.values());
+            }
+            List<Map<String, Object>> filtered = filterDocs(allDocs, queryParams);
+
+            Pageable pageable = query.getPageable();
+            long total = filtered.size();
+
+            List<Map<String, Object>> pageContent = new ArrayList<>();
+            if (pageable != null && pageable.isPaged()) {
+                int from = (int) pageable.getOffset();
+                int to = Math.min(from + pageable.getPageSize(), filtered.size());
+                if (from < filtered.size()) {
+                    pageContent.addAll(filtered.subList(from, to));
+                }
+            } else {
+                pageContent.addAll(filtered);
+            }
+
+            List<SearchHit<Map<String, Object>>> searchHits = new ArrayList<>();
+            for (Map<String, Object> doc : pageContent) {
+                SearchHit<Map<String, Object>> hit = mock(SearchHit.class);
+                when(hit.getContent()).thenReturn(doc);
+                searchHits.add(hit);
+            }
+
+            SearchHits<Map<String, Object>> result = mock(SearchHits.class);
+            when(result.getSearchHits()).thenReturn(searchHits);
+            when(result.getTotalHits()).thenReturn(total);
+            return result;
+        });
+
+        when(elasticsearchOperations.count(any(Query.class), any(IndexCoordinates.class))).thenAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
+            Map<String, Object> queryParams = extractQueryParams(query);
+            Map<String, Map<String, Object>> index = docStore.get(INDEX_NAME);
+            List<Map<String, Object>> allDocs = new ArrayList<>();
+            if (index != null) {
+                allDocs.addAll(index.values());
+            }
+            List<Map<String, Object>> filtered = filterDocs(allDocs, queryParams);
             return (long) filtered.size();
         });
     }
 
-    private List<org.bson.Document> filterDocsByQuery(Query query, List<org.bson.Document> docs) {
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> extractQueryParams(Query query) {
+        Map<String, Object> params = new LinkedHashMap<>();
         try {
-            Field criteriaField = Query.class.getDeclaredField("criteria");
-            criteriaField.setAccessible(true);
-            Object criteriaObj = criteriaField.get(query);
-
-            if (criteriaObj instanceof Map) {
-                Map<?, ?> criteriaMap = (Map<?, ?>) criteriaObj;
-                List<Map.Entry<String, Object>> conditions = new ArrayList<>();
-                for (Map.Entry<?, ?> entry : criteriaMap.entrySet()) {
-                    String fieldName = entry.getKey().toString();
-                    Object criteriaValue = entry.getValue();
-                    if (criteriaValue instanceof Criteria) {
-                        Object value = extractCriteriaValue((Criteria) criteriaValue);
-                        if (value != null) {
-                            conditions.add(Map.entry(fieldName, value));
-                        }
-                    }
+            Field criteriaField = null;
+            Class<?> clazz = query.getClass();
+            while (clazz != null && clazz != Object.class) {
+                try {
+                    criteriaField = clazz.getDeclaredField("criteria");
+                    break;
+                } catch (NoSuchFieldException e) {
+                    clazz = clazz.getSuperclass();
                 }
-                if (!conditions.isEmpty()) {
-                    return docs.stream()
-                            .filter(doc -> matchesConditions(doc, conditions))
-                            .collect(java.util.stream.Collectors.toList());
+            }
+            if (criteriaField != null) {
+                criteriaField.setAccessible(true);
+                Object criteria = criteriaField.get(query);
+                if (criteria != null) {
+                    extractCriteriaFields(criteria, params);
                 }
             }
         } catch (Exception ignored) {
         }
-        return docs;
+        return params;
     }
 
-    private Object extractCriteriaValue(Criteria criteria) {
+    private void extractCriteriaFields(Object criteria, Map<String, Object> params) {
         try {
-            Field isValueField = Criteria.class.getDeclaredField("isValue");
-            isValueField.setAccessible(true);
-            Object value = isValueField.get(criteria);
-            if (value != null && !"java.lang.Object".equals(value.getClass().getName())) {
-                return value;
+            String fieldName = null;
+            Class<?> clazz = criteria.getClass();
+            Field field = null;
+            while (clazz != null && clazz != Object.class) {
+                try {
+                    field = clazz.getDeclaredField("field");
+                    break;
+                } catch (NoSuchFieldException e) {
+                    clazz = clazz.getSuperclass();
+                }
+            }
+            if (field != null) {
+                field.setAccessible(true);
+                Object fieldVal = field.get(criteria);
+                if (fieldVal != null) {
+                    fieldName = fieldVal.toString();
+                }
+            }
+
+            Object value = getCriteriaValue(criteria);
+            if (fieldName != null && value != null && !"_id".equals(fieldName)) {
+                params.put(fieldName, value);
+            }
+
+            try {
+                Field subCriteriaField = null;
+                Class<?> c = criteria.getClass();
+                while (c != null && c != Object.class) {
+                    try {
+                        subCriteriaField = c.getDeclaredField("subCriteria");
+                        break;
+                    } catch (NoSuchFieldException e) {
+                        c = c.getSuperclass();
+                    }
+                }
+                if (subCriteriaField != null) {
+                    subCriteriaField.setAccessible(true);
+                    Object subCriteria = subCriteriaField.get(criteria);
+                    if (subCriteria instanceof Iterable) {
+                        for (Object sub : (Iterable<?>) subCriteria) {
+                            extractCriteriaFields(sub, params);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private Object getCriteriaValue(Object criteria) {
+        try {
+            Class<?> clazz = criteria.getClass();
+            Field entriesField = null;
+            while (clazz != null && clazz != Object.class) {
+                try {
+                    entriesField = clazz.getDeclaredField("queryCriteriaEntries");
+                    break;
+                } catch (NoSuchFieldException e) {
+                    clazz = clazz.getSuperclass();
+                }
+            }
+            if (entriesField != null) {
+                entriesField.setAccessible(true);
+                Object entries = entriesField.get(criteria);
+                if (entries instanceof Iterable) {
+                    for (Object entry : (Iterable<?>) entries) {
+                        Field valueField = null;
+                        Class<?> entryClazz = entry.getClass();
+                        while (entryClazz != null && entryClazz != Object.class) {
+                            try {
+                                valueField = entryClazz.getDeclaredField("value");
+                                break;
+                            } catch (NoSuchFieldException e) {
+                                entryClazz = entryClazz.getSuperclass();
+                            }
+                        }
+                        if (valueField != null) {
+                            valueField.setAccessible(true);
+                            Object value = valueField.get(entry);
+                            if (value != null) {
+                                return value;
+                            }
+                        }
+                    }
+                }
             }
         } catch (Exception ignored) {
         }
         return null;
     }
 
-    private boolean matchesConditions(org.bson.Document doc, List<Map.Entry<String, Object>> conditions) {
-        for (Map.Entry<String, Object> condition : conditions) {
-            String fieldName = condition.getKey();
-            Object expectedValue = condition.getValue();
-            Object actualValue = doc.get(fieldName);
-            if (actualValue == null || !actualValue.equals(expectedValue)) {
-                return false;
-            }
+    private List<Map<String, Object>> filterDocs(List<Map<String, Object>> docs, Map<String, Object> params) {
+        if (params == null || params.isEmpty()) {
+            return new ArrayList<>(docs);
         }
-        return true;
-    }
-
-    private Map<String, Object> extractUpdateValues(Update update) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        try {
-            Field modifierOpsField = Update.class.getDeclaredField("modifierOps");
-            modifierOpsField.setAccessible(true);
-            Object modifierOps = modifierOpsField.get(update);
-            if (modifierOps instanceof Map) {
-                Map<?, ?> opsMap = (Map<?, ?>) modifierOps;
-                Object setDoc = opsMap.get("$set");
-                if (setDoc instanceof org.bson.Document) {
-                    result.putAll((org.bson.Document) setDoc);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> doc : docs) {
+            boolean match = true;
+            for (Map.Entry<String, Object> entry : params.entrySet()) {
+                Object docValue = doc.get(entry.getKey());
+                Object paramValue = entry.getValue();
+                if (docValue == null || !docValue.equals(paramValue)) {
+                    match = false;
+                    break;
                 }
             }
-        } catch (Exception ignored) {
-        }
-        return result;
-    }
-
-    private Map<String, Object> documentToMap(org.bson.Document doc) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        if (doc != null) {
-            for (String key : doc.keySet()) {
-                map.put(key, doc.get(key));
+            if (match) {
+                result.add(doc);
             }
         }
-        return map;
+        return result;
     }
 
     // ==================== 测试方法 ====================
@@ -386,7 +419,7 @@ class MongoLowCodeRepositoryTest {
         article.put("category", "news");
 
         Map<String, Object> saved = lowCodeRepository.save(RESOURCE_NAME, article);
-        Object id = saved.get("id");
+        String id = (String) saved.get("id");
 
         Map<String, Object> updateData = new LinkedHashMap<>();
         updateData.put("id", id);
@@ -409,7 +442,7 @@ class MongoLowCodeRepositoryTest {
         article.put("author", "test_author");
 
         Map<String, Object> saved = lowCodeRepository.save(RESOURCE_NAME, article);
-        Object id = saved.get("id");
+        String id = (String) saved.get("id");
 
         Map<String, Object> result = lowCodeRepository.findById(RESOURCE_NAME, id);
 
@@ -497,7 +530,7 @@ class MongoLowCodeRepositoryTest {
         article.put("author", "delete_author");
 
         Map<String, Object> saved = lowCodeRepository.save(RESOURCE_NAME, article);
-        Object id = saved.get("id");
+        String id = (String) saved.get("id");
 
         lowCodeRepository.removeById(RESOURCE_NAME, id);
 
@@ -630,7 +663,7 @@ class MongoLowCodeRepositoryTest {
         article.put("author", "query_author");
 
         Map<String, Object> saved = lowCodeRepository.save(RESOURCE_NAME, article);
-        Object id = saved.get("id");
+        String id = (String) saved.get("id");
 
         Map<String, Object> result = lowCodeRepository.queryById(RESOURCE_NAME, id);
 
@@ -648,7 +681,7 @@ class MongoLowCodeRepositoryTest {
         article.put("author", "optional_author");
 
         Map<String, Object> saved = lowCodeRepository.save(RESOURCE_NAME, article);
-        Object id = saved.get("id");
+        String id = (String) saved.get("id");
 
         Optional<Map<String, Object>> result = lowCodeRepository.queryByIdOptional(RESOURCE_NAME, id);
 
