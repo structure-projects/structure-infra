@@ -12,7 +12,8 @@ import org.springframework.context.annotation.FilterType;
         "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration",
         "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration",
         "org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration",
-        "org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration"
+        "org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration",
+        "org.springframework.boot.autoconfigure.cache.CacheAutoConfiguration"
 })
 @ComponentScan(basePackages = {
         "cn.structure.infra.sample",
