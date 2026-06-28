@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>cn.structured</groupId>
+        <artifactId>structure-infra-sample</artifactId>
+        <version>${revision}</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <name>structure-infra-sample-core</name>
+    <artifactId>structure-infra-sample-core</artifactId>
+    <description>示例核心模块 - 共享 Entity、PO、Repository 接口</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <!-- structure-infra-starter -->
+        <dependency>
+            <groupId>cn.structured</groupId>
+            <artifactId>structure-infra-starter</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- structure-common -->
+        <dependency>
+            <groupId>cn.structured</groupId>
+            <artifactId>structure-common</artifactId>
+        </dependency>
+
+        <!-- MyBatis Plus annotations (for PO annotations) -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- JPA API (for PO annotations) -->
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+</project>

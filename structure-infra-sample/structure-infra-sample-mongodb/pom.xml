@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>cn.structured</groupId>
+        <artifactId>structure-infra-sample</artifactId>
+        <version>${revision}</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <name>structure-infra-sample-mongodb</name>
+    <artifactId>structure-infra-sample-mongodb</artifactId>
+    <description>MongoDB 示例模块 - 演示 MongoDB 仓储实现</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <!-- Spring Boot Starter Data MongoDB -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        </dependency>
+
+        <!-- structure-infra-sample-core -->
+        <dependency>
+            <groupId>cn.structured</groupId>
+            <artifactId>structure-infra-sample-core</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- structure-infra-mongodb-starter -->
+        <dependency>
+            <groupId>cn.structured</groupId>
+            <artifactId>structure-infra-mongodb-starter</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- structure-common -->
+        <dependency>
+            <groupId>cn.structured</groupId>
+            <artifactId>structure-common</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Starter Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
