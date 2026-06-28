@@ -1,6 +1,5 @@
 package cn.structure.infra.sample.elasticsearch.config;
 
-import cn.structure.infra.sample.infra.po.UserPO;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -12,6 +11,7 @@ import org.springframework.data.elasticsearch.core.SearchHitsImpl;
 import org.springframework.data.elasticsearch.core.TotalHitsRelation;
 import org.springframework.data.elasticsearch.core.query.Query;
 
+import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,40 +26,78 @@ import static org.mockito.Mockito.when;
 @TestConfiguration
 public class MockElasticsearchConfiguration {
 
-    private final Map<Long, UserPO> dataStore = new HashMap<>();
+    private final Map<Class<?>, Map<Long, Object>> dataStore = new HashMap<>();
     private long idGenerator = 1;
+
+    public void reset() {
+        dataStore.clear();
+        idGenerator = 1;
+    }
 
     @Bean
     @Primary
     public ElasticsearchTemplate elasticsearchTemplate() {
         ElasticsearchTemplate template = mock(ElasticsearchTemplate.class);
 
-        when(template.save(any(UserPO.class))).thenAnswer(invocation -> {
-            UserPO po = invocation.getArgument(0);
-            if (po.getId() == null || po.getId() == 0) {
-                po.setId(idGenerator++);
+        when(template.save(any(Object.class))).thenAnswer(invocation -> {
+            Object po = invocation.getArgument(0);
+            Class<?> poClass = po.getClass();
+            
+            Map<Long, Object> classStore = dataStore.computeIfAbsent(poClass, k -> new HashMap<>());
+            
+            try {
+                Field idField = findIdField(poClass);
+                if (idField != null) {
+                    idField.setAccessible(true);
+                    Object idValue = idField.get(po);
+                    Long id = null;
+                    
+                    if (idValue == null || (idValue instanceof Number && ((Number) idValue).longValue() == 0)) {
+                        id = idGenerator++;
+                        setIdValue(po, id);
+                    } else if (idValue instanceof Long) {
+                        id = (Long) idValue;
+                    } else if (idValue instanceof String) {
+                        id = Long.valueOf((String) idValue);
+                    } else if (idValue instanceof Number) {
+                        id = ((Number) idValue).longValue();
+                    }
+                    
+                    if (id != null) {
+                        classStore.put(id, po);
+                    }
+                }
+            } catch (Exception ignored) {
             }
-            dataStore.put(po.getId(), po);
+            
             return po;
         });
 
         when(template.get(anyString(), any(Class.class))).thenAnswer(invocation -> {
             String id = invocation.getArgument(0);
-            return dataStore.get(Long.valueOf(id));
+            Class<?> poClass = invocation.getArgument(1);
+            Map<Long, Object> classStore = dataStore.get(poClass);
+            return classStore != null ? classStore.get(Long.valueOf(id)) : null;
         });
 
         when(template.delete(anyString(), any(Class.class))).thenAnswer(invocation -> {
             String id = invocation.getArgument(0);
-            dataStore.remove(Long.valueOf(id));
+            Class<?> poClass = invocation.getArgument(1);
+            Map<Long, Object> classStore = dataStore.get(poClass);
+            if (classStore != null) {
+                classStore.remove(Long.valueOf(id));
+            }
             return id;
         });
 
         when(template.search(any(Query.class), any(Class.class))).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
-            List<UserPO> allData = new ArrayList<>(dataStore.values());
+            Class<?> poClass = invocation.getArgument(1);
+            
+            List<Object> allData = getAllData(poClass);
 
             Pageable pageable = query.getPageable();
-            List<UserPO> pageData = new ArrayList<>(allData);
+            List<Object> pageData = new ArrayList<>(allData);
             if (pageable != null && pageable.isPaged()) {
                 int pageNum = pageable.getPageNumber();
                 int pageSize = pageable.getPageSize();
@@ -72,10 +110,18 @@ public class MockElasticsearchConfiguration {
                 }
             }
 
-            List<SearchHit<UserPO>> searchHits = new ArrayList<>();
-            for (UserPO po : pageData) {
-                SearchHit<UserPO> hit = mock(SearchHit.class);
-                when(hit.getId()).thenReturn(String.valueOf(po.getId()));
+            List<SearchHit<Object>> searchHits = new ArrayList<>();
+            for (Object po : pageData) {
+                SearchHit<Object> hit = mock(SearchHit.class);
+                try {
+                    Field idField = findIdField(poClass);
+                    if (idField != null) {
+                        idField.setAccessible(true);
+                        Object idValue = idField.get(po);
+                        when(hit.getId()).thenReturn(String.valueOf(idValue));
+                    }
+                } catch (Exception ignored) {
+                }
                 when(hit.getContent()).thenReturn(po);
                 searchHits.add(hit);
             }
@@ -95,9 +141,47 @@ public class MockElasticsearchConfiguration {
         });
 
         when(template.count(any(Query.class), any(Class.class))).thenAnswer(invocation -> {
-            return (long) dataStore.size();
+            Class<?> poClass = invocation.getArgument(1);
+            Map<Long, Object> classStore = dataStore.get(poClass);
+            return classStore != null ? (long) classStore.size() : 0L;
         });
 
         return template;
+    }
+
+    private List<Object> getAllData(Class<?> poClass) {
+        Map<Long, Object> classStore = dataStore.get(poClass);
+        return classStore != null ? new ArrayList<>(classStore.values()) : new ArrayList<>();
+    }
+
+    private Field findIdField(Class<?> clazz) {
+        return findField(clazz, "id");
+    }
+
+    private Field findField(Class<?> clazz, String fieldName) {
+        try {
+            return clazz.getDeclaredField(fieldName);
+        } catch (NoSuchFieldException e) {
+            if (clazz.getSuperclass() != null && clazz.getSuperclass() != Object.class) {
+                return findField(clazz.getSuperclass(), fieldName);
+            }
+            return null;
+        }
+    }
+
+    private void setIdValue(Object po, Long id) throws Exception {
+        Field field = findIdField(po.getClass());
+        if (field != null) {
+            field.setAccessible(true);
+            if (field.getType() == Long.class || field.getType() == long.class) {
+                field.set(po, id);
+            } else if (field.getType() == Integer.class || field.getType() == int.class) {
+                field.set(po, id.intValue());
+            } else if (field.getType() == String.class) {
+                field.set(po, String.valueOf(id));
+            } else {
+                field.set(po, id);
+            }
+        }
     }
 }

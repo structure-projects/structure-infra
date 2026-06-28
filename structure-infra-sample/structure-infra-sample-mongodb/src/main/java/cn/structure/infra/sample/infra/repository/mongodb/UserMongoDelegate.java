@@ -18,10 +18,6 @@ import org.springframework.stereotype.Component;
 )
 public class UserMongoDelegate extends MongoRepositoryDelegate<UserPO, Long> implements UserRepositoryDelegate {
 
-    public UserMongoDelegate(MongoTemplate mongoTemplate) {
-        super(mongoTemplate, UserPO.class);
-    }
-
     @Override
     public UserPO finByName(String name) {
         UserPO condition = new UserPO();

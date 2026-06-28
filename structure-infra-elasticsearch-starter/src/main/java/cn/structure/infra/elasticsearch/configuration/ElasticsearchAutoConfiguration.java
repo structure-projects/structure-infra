@@ -1,8 +1,13 @@
 package cn.structure.infra.elasticsearch.configuration;
 
+import cn.structure.infra.elasticsearch.repository.ElasticsearchDelegateBeanPostProcessor;
+import cn.structure.infra.elasticsearch.repository.ElasticsearchDelegateFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.repository.config.EnableElasticsearchRepositories;
 
 /**
@@ -20,4 +25,15 @@ import org.springframework.data.elasticsearch.repository.config.EnableElasticsea
 @EnableElasticsearchRepositories
 public class ElasticsearchAutoConfiguration {
 
+    @Bean
+    @ConditionalOnBean(ElasticsearchOperations.class)
+    public ElasticsearchDelegateFactory elasticsearchDelegateFactory(ElasticsearchOperations elasticsearchOperations) {
+        return new ElasticsearchDelegateFactory(elasticsearchOperations);
+    }
+
+    @Bean
+    @ConditionalOnBean(ElasticsearchOperations.class)
+    public ElasticsearchDelegateBeanPostProcessor elasticsearchDelegateBeanPostProcessor() {
+        return new ElasticsearchDelegateBeanPostProcessor();
+    }
 }

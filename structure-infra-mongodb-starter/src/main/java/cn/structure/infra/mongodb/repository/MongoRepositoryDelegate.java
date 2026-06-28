@@ -47,6 +47,18 @@ public class MongoRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID>
         log.info("MongoRepositoryDelegate initialized for entity: {}", entityClass.getSimpleName());
     }
 
+    public void setMongoTemplate(MongoTemplate mongoTemplate) {
+        this.mongoTemplate = mongoTemplate;
+    }
+
+    public void setEntityClass(Class<T> entityClass) {
+        this.entityClass = entityClass;
+    }
+
+    public void setIdFieldName(String idFieldName) {
+        this.idFieldName = idFieldName;
+    }
+
     @Override
     public T save(T entity) {
         if (entity == null) {

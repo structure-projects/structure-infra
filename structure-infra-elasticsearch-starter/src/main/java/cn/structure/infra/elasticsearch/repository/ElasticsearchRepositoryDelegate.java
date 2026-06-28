@@ -50,6 +50,18 @@ public class ElasticsearchRepositoryDelegate<T, ID> implements RepositoryDelegat
         log.info("ElasticsearchRepositoryDelegate initialized for entity: {}", entityClass.getSimpleName());
     }
 
+    public void setElasticsearchOperations(ElasticsearchOperations elasticsearchOperations) {
+        this.elasticsearchOperations = elasticsearchOperations;
+    }
+
+    public void setEntityClass(Class<T> entityClass) {
+        this.entityClass = entityClass;
+    }
+
+    public void setIdFieldName(String idFieldName) {
+        this.idFieldName = idFieldName;
+    }
+
     @Override
     public T save(T entity) {
         if (entity == null) {

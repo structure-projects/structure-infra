@@ -18,10 +18,6 @@ import org.springframework.stereotype.Component;
 )
 public class UserJpaDelegate extends JpaRepositoryDelegate<UserPO, Long> implements UserRepositoryDelegate {
 
-    public UserJpaDelegate(EntityManager entityManager) {
-        super(entityManager, UserPO.class);
-    }
-
     @Override
     public UserPO finByName(String name) {
         UserPO condition = new UserPO();

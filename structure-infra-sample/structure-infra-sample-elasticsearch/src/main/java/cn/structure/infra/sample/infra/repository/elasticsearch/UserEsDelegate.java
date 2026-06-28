@@ -18,10 +18,6 @@ import org.springframework.stereotype.Component;
 )
 public class UserEsDelegate extends ElasticsearchRepositoryDelegate<UserPO, Long> implements UserRepositoryDelegate {
 
-    public UserEsDelegate(ElasticsearchOperations elasticsearchOperations) {
-        super(elasticsearchOperations, UserPO.class);
-    }
-
     @Override
     public UserPO finByName(String name) {
         UserPO condition = new UserPO();

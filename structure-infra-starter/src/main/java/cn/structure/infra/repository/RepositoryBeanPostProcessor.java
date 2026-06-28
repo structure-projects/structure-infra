@@ -10,11 +10,13 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextRefreshedEvent;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 public class RepositoryBeanPostProcessor implements BeanPostProcessor, ApplicationContextAware, ApplicationListener<ContextRefreshedEvent> {
@@ -101,9 +103,17 @@ public class RepositoryBeanPostProcessor implements BeanPostProcessor, Applicati
                 log.info("Injected {} delegate '{}' into RepositoryFacade '{}'",
                         matchedInfo.type, matchedInfo.beanName, beanName);
             } else {
-                log.warn("No matching delegate found for RepositoryFacade '{}', using default InMemoryRepositoryDelegate", beanName);
-                RepositoryDelegate defaultDelegate = new InMemoryRepositoryDelegate(poClass);
-                facade.setBaseDelegate(defaultDelegate);
+                log.debug("No matching delegate found for RepositoryFacade '{}', trying to auto-create delegate via factory", beanName);
+                RepositoryDelegate autoDelegate = autoCreateDelegate(poClass, idClass, targetType);
+                
+                if (autoDelegate != null) {
+                    facade.setBaseDelegate(autoDelegate);
+                    log.info("Auto-created {} delegate for RepositoryFacade '{}'", targetType, beanName);
+                } else {
+                    log.warn("No matching delegate found for RepositoryFacade '{}', using default InMemoryRepositoryDelegate", beanName);
+                    RepositoryDelegate defaultDelegate = new InMemoryRepositoryDelegate(poClass);
+                    facade.setBaseDelegate(defaultDelegate);
+                }
             }
 
             facade.setEntityClass(entityClass);
@@ -112,6 +122,44 @@ public class RepositoryBeanPostProcessor implements BeanPostProcessor, Applicati
         } catch (Exception e) {
             log.warn("Error injecting delegate to RepositoryFacade '{}': {}", beanName, e.getMessage());
         }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private RepositoryDelegate autoCreateDelegate(Class<?> poClass, Class<?> idClass, RepositoryType targetType) {
+        try {
+            Map<String, RepositoryDelegateFactory> factories = applicationContext.getBeansOfType(RepositoryDelegateFactory.class);
+            
+            if (factories.isEmpty()) {
+                log.debug("No RepositoryDelegateFactory beans found in application context");
+                return null;
+            }
+
+            if (targetType != RepositoryType.AUTO) {
+                for (RepositoryDelegateFactory factory : factories.values()) {
+                    if (factory.getType() == targetType) {
+                        RepositoryDelegate delegate = factory.createDelegate(poClass, idClass);
+                        if (delegate != null) {
+                            return delegate;
+                        }
+                    }
+                }
+            } else {
+                for (RepositoryDelegateFactory factory : factories.values()) {
+                    try {
+                        RepositoryDelegate delegate = factory.createDelegate(poClass, idClass);
+                        if (delegate != null) {
+                            log.debug("Auto-created delegate using factory for type: {}", factory.getType());
+                            return delegate;
+                        }
+                    } catch (Exception e) {
+                        log.debug("Factory {} failed to create delegate: {}", factory.getType(), e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to auto-create delegate: {}", e.getMessage());
+        }
+        return null;
     }
 
     private DelegateInfo findBestMatch(String beanName, Class<?> poClass, Class<?> delegateClass, RepositoryType targetType) {

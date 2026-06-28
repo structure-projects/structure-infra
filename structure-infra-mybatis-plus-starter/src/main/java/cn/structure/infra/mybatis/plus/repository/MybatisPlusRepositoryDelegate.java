@@ -36,6 +36,17 @@ public class MybatisPlusRepositoryDelegate<T, ID> implements RepositoryDelegate<
         log.info("MybatisPlusRepositoryDelegate initialized for entity: {}", entityClass.getSimpleName());
     }
 
+    public void setBaseMapper(BaseMapper<T> baseMapper) {
+        this.baseMapper = baseMapper;
+    }
+
+    public void setEntityClass(Class<T> entityClass) {
+        this.entityClass = entityClass;
+    }
+
+    public void setIdFieldName(String idFieldName) {
+        this.idFieldName = idFieldName;
+    }
 
     @Override
     public T save(T entity) {

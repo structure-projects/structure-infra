@@ -1,12 +1,16 @@
 package cn.structure.infra.jpa.configuration;
 
+import cn.structure.infra.jpa.repository.JpaDelegateBeanPostProcessor;
+import cn.structure.infra.jpa.repository.JpaDelegateFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+
+import jakarta.persistence.EntityManager;
 
 /**
  * JPA 自动配置类
@@ -24,4 +28,15 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 @EnableTransactionManagement
 public class JpaAutoConfiguration {
 
+    @Bean
+    @ConditionalOnBean(EntityManager.class)
+    public JpaDelegateFactory jpaDelegateFactory(EntityManager entityManager) {
+        return new JpaDelegateFactory(entityManager);
+    }
+
+    @Bean
+    @ConditionalOnBean(EntityManager.class)
+    public JpaDelegateBeanPostProcessor jpaDelegateBeanPostProcessor() {
+        return new JpaDelegateBeanPostProcessor();
+    }
 }
