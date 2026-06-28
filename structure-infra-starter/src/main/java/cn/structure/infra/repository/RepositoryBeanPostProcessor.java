@@ -47,6 +47,9 @@ public class RepositoryBeanPostProcessor implements BeanPostProcessor, Applicati
 
             if (bean instanceof RepositoryDelegate) {
                 info.delegate = (RepositoryDelegate<?, ?>) bean;
+                if (bean instanceof IQueryDelegate) {
+                    info.queryDelegate = (IQueryDelegate<?, ?>) bean;
+                }
                 log.info("Found RepositoryDelegate: name={}, type={}, delegateType={}, poClass={}, delegateClass={}, priority={}",
                         info.name, info.type, info.delegateType,
                         info.poClass != null ? info.poClass.getSimpleName() : "null",
