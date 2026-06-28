@@ -1,0 +1,2 @@
+cn.structure.infra.elasticsearch.configuration.ElasticsearchAutoConfiguration
+cn.structure.infra.elasticsearch.lowcode.ElasticsearchLowCodeAutoConfiguration

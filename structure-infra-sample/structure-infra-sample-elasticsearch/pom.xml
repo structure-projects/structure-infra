@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>cn.structured</groupId>
+        <artifactId>structure-infra-sample</artifactId>
+        <version>${revision}</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <name>structure-infra-sample-elasticsearch</name>
+    <artifactId>structure-infra-sample-elasticsearch</artifactId>
+    <description>Elasticsearch 示例模块 - 演示 Elasticsearch 仓储实现</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <!-- Spring Boot Starter Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Starter Data Elasticsearch -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+        </dependency>
+
+        <!-- structure-infra-sample-core -->
+        <dependency>
+            <groupId>cn.structured</groupId>
+            <artifactId>structure-infra-sample-core</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- structure-infra-elasticsearch-starter -->
+        <dependency>
+            <groupId>cn.structured</groupId>
+            <artifactId>structure-infra-elasticsearch-starter</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- structure-common -->
+        <dependency>
+            <groupId>cn.structured</groupId>
+            <artifactId>structure-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>cn.structured</groupId>
+            <artifactId>structure-security-jwt-starter</artifactId>
+        </dependency>
+        <!-- Spring Boot Starter Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

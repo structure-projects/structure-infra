@@ -1,0 +1,2 @@
+cn.structure.infra.mybatis.plus.configuration.MybatisPlusAutoConfiguration
+cn.structure.infra.mybatis.plus.lowcode.configuration.MybatisPlusLowCodeAutoConfiguration

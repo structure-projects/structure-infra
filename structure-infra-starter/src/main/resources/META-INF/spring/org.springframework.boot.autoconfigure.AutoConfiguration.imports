@@ -1,0 +1,3 @@
+cn.structure.infra.configuration.AutoEventConfiguration
+cn.structure.infra.configuration.AutoRepositoryConfiguration
+cn.structure.infra.lowcode.configuration.LowCodeAutoConfiguration

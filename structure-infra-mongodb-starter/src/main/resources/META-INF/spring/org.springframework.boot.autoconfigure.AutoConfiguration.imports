@@ -1,0 +1,2 @@
+cn.structure.infra.mongodb.configuration.MongoAutoConfiguration
+cn.structure.infra.mongodb.lowcode.MongoLowCodeAutoConfiguration

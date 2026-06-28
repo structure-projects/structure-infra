@@ -1,0 +1,16 @@
+structure:
+  infra:
+    type: MONGODB
+
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/test
+      database: test
+      auto-index-creation: true
+
+logging:
+  level:
+    org.springframework.data.mongodb: DEBUG
+    cn.structure.infra.repository: DEBUG
+    cn.structure.infra.mongodb: INFO
