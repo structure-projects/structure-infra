@@ -1,3 +1,7 @@
+structure:
+  infra:
+    type: MONGODB
+
 spring:
   data:
     mongodb:
@@ -9,3 +13,4 @@ logging:
   level:
     org.springframework.data.mongodb: DEBUG
     cn.structure.infra.repository: DEBUG
+    cn.structure.infra.mongodb: INFO
