@@ -5,17 +5,9 @@ import cn.structure.infra.mongodb.repository.MongoRepositoryDelegate;
 import cn.structure.infra.repository.RepositoryType;
 import cn.structure.infra.sample.infra.po.UserPO;
 import cn.structure.infra.sample.infra.repository.delegate.UserRepositoryDelegate;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Component;
 
-/**
- * 用户仓储 MongoDB 实现
- * <p>
- * 使用 Spring Data MongoDB 实现用户数据的持久化操作
- *
- * @author chuck
- * @version 1.0.1
- * @since 2026/6/28
- */
 @Component
 @DelegateFor(
         name = "userRepository",
@@ -26,9 +18,14 @@ import org.springframework.stereotype.Component;
 )
 public class UserMongoDelegate extends MongoRepositoryDelegate<UserPO, Long> implements UserRepositoryDelegate {
 
+    public UserMongoDelegate(MongoTemplate mongoTemplate) {
+        super(mongoTemplate, UserPO.class);
+    }
+
     @Override
     public UserPO finByName(String name) {
-        // TODO: 实现 MongoDB 查询逻辑
-        return null;
+        UserPO condition = new UserPO();
+        condition.setUsername(name);
+        return queryOne(condition);
     }
 }

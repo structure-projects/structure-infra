@@ -5,17 +5,9 @@ import cn.structure.infra.elasticsearch.repository.ElasticsearchRepositoryDelega
 import cn.structure.infra.repository.RepositoryType;
 import cn.structure.infra.sample.infra.po.UserPO;
 import cn.structure.infra.sample.infra.repository.delegate.UserRepositoryDelegate;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.stereotype.Component;
 
-/**
- * 用户仓储 Elasticsearch 实现
- * <p>
- * 使用 Spring Data Elasticsearch 实现用户数据的持久化操作
- *
- * @author chuck
- * @version 1.0.1
- * @since 2026/6/28
- */
 @Component
 @DelegateFor(
         name = "userRepository",
@@ -26,10 +18,15 @@ import org.springframework.stereotype.Component;
 )
 public class UserEsDelegate extends ElasticsearchRepositoryDelegate<UserPO, Long> implements UserRepositoryDelegate {
 
+    public UserEsDelegate(ElasticsearchOperations elasticsearchOperations) {
+        super(elasticsearchOperations, UserPO.class);
+    }
+
     @Override
     public UserPO finByName(String name) {
-        // TODO: 实现 Elasticsearch 查询逻辑
-        return null;
+        UserPO condition = new UserPO();
+        condition.setUsername(name);
+        return queryOne(condition);
     }
 
 }

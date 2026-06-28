@@ -1,20 +1,20 @@
 package cn.structure.infra.sample.jpa.config;
 
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
-/**
- * JPA 测试配置
- * <p>
- * 配置 JPA 相关的组件扫描
- *
- * @author chuck
- * @version 1.0.1
- * @since 2026/6/28
- */
 @Configuration
+@SpringBootApplication(excludeName = {
+        "org.mybatis.spring.boot.autoconfigure.MybatisAutoConfiguration",
+        "com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration",
+        "org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration",
+        "org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration",
+        "org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration",
+        "org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration",
+        "org.springframework.boot.autoconfigure.cache.CacheAutoConfiguration"
+})
 @ComponentScan(basePackages = {
         "cn.structure.infra.sample",
         "cn.structure.infra.repository"
@@ -23,6 +23,5 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         @ComponentScan.Filter(type = FilterType.REGEX, pattern = "cn.structure.infra.sample.infra.repository.mongodb.*"),
         @ComponentScan.Filter(type = FilterType.REGEX, pattern = "cn.structure.infra.sample.infra.repository.elasticsearch.*")
 })
-@EnableJpaRepositories(basePackages = "cn.structure.infra.sample.infra.repository.jpa")
 public class JpaTestConfig {
 }

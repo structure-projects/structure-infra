@@ -44,6 +44,20 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Spring Data MongoDB (for PO annotations) -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-mongodb</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Spring Data Elasticsearch (for PO annotations) -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-elasticsearch</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

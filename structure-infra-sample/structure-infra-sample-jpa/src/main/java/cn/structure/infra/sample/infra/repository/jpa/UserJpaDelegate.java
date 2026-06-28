@@ -5,17 +5,9 @@ import cn.structure.infra.jpa.repository.JpaRepositoryDelegate;
 import cn.structure.infra.repository.RepositoryType;
 import cn.structure.infra.sample.infra.po.UserPO;
 import cn.structure.infra.sample.infra.repository.delegate.UserRepositoryDelegate;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Component;
 
-/**
- * 用户仓储 JPA 实现
- * <p>
- * 使用 Spring Data JPA 实现用户数据的持久化操作
- *
- * @author chuck
- * @version 1.0.1
- * @since 2026/6/28
- */
 @Component
 @DelegateFor(
         name = "userRepository",
@@ -26,10 +18,15 @@ import org.springframework.stereotype.Component;
 )
 public class UserJpaDelegate extends JpaRepositoryDelegate<UserPO, Long> implements UserRepositoryDelegate {
 
+    public UserJpaDelegate(EntityManager entityManager) {
+        super(entityManager, UserPO.class);
+    }
+
     @Override
     public UserPO finByName(String name) {
-        // TODO: 实现 JPA 查询逻辑
-        return null;
+        UserPO condition = new UserPO();
+        condition.setUsername(name);
+        return queryOne(condition);
     }
 
 }

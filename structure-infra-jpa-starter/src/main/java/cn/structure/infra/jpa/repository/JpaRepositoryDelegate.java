@@ -5,11 +5,11 @@ import cn.structure.common.vo.ResPage;
 import cn.structure.infra.repository.RepositoryDelegate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.repository.JpaRepository;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
@@ -22,7 +22,6 @@ import java.util.Optional;
 @Slf4j
 public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
 
-    protected JpaRepository<T, ID> jpaRepository;
     protected EntityManager entityManager;
     protected Class<T> entityClass;
 
@@ -32,15 +31,7 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
     public JpaRepositoryDelegate(EntityManager entityManager, Class<T> entityClass) {
         this.entityManager = entityManager;
         this.entityClass = entityClass;
-        this.jpaRepository = createJpaRepository(entityManager, entityClass);
         log.info("JpaRepositoryDelegate initialized for entity: {}", entityClass.getSimpleName());
-    }
-
-    @SuppressWarnings("unchecked")
-    private JpaRepository<T, ID> createJpaRepository(EntityManager em, Class<T> domainClass) {
-        org.springframework.data.jpa.repository.support.JpaRepositoryFactory factory =
-                new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(em);
-        return (JpaRepository<T, ID>) factory.getRepository(domainClass);
     }
 
     @Override
@@ -48,7 +39,7 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
         if (entity == null) {
             return null;
         }
-        T saved = jpaRepository.save(entity);
+        T saved = entityManager.merge(entity);
         log.debug("Saved entity: {}", saved);
         return saved;
     }
@@ -56,8 +47,11 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
     @Override
     public void removeById(ID id) {
         if (id != null) {
-            jpaRepository.deleteById(id);
-            log.debug("Removed entity: id={}", id);
+            T entity = findById(id);
+            if (entity != null) {
+                entityManager.remove(entity);
+                log.debug("Removed entity: id={}", id);
+            }
         }
     }
 
@@ -66,7 +60,7 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
         if (id == null) {
             return null;
         }
-        T entity = jpaRepository.findById(id).orElse(null);
+        T entity = entityManager.find(entityClass, id);
         log.debug("Find by id: id={}, found={}", id, entity != null);
         return entity;
     }
@@ -78,7 +72,7 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
 
     @Override
     public Optional<T> queryByIdOptional(ID id) {
-        return jpaRepository.findById(id);
+        return Optional.ofNullable(findById(id));
     }
 
     @Override
@@ -98,28 +92,39 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
     @Override
     public List<T> queryList(T condition) {
         if (condition == null) {
-            return jpaRepository.findAll();
+            return findAll();
         }
         return queryByCondition(condition);
     }
 
     @Override
     public ResPage<T> queryPage(ReqPage reqPage) {
-        int pageNum = reqPage.getPage() != null ? reqPage.getPage() - 1 : 0; // JPA page 从 0 开始
+        int pageNum = reqPage.getPage() != null ? reqPage.getPage() - 1 : 0;
         int pageSize = reqPage.getSize() != null ? reqPage.getSize() : 10;
 
-        Page<T> page = jpaRepository.findAll(PageRequest.of(pageNum, pageSize, Sort.unsorted()));
+        List<T> allResults = findAll();
+        int start = pageNum * pageSize;
+        int end = Math.min(start + pageSize, allResults.size());
+        
+        List<T> pageContent = start < allResults.size() ? allResults.subList(start, end) : List.of();
 
         ResPage<T> resPage = new ResPage<>();
-        resPage.setCurrent((long) (page.getNumber() + 1)); // 转换为从 1 开始
-        resPage.setPages((long) page.getTotalPages());
-        resPage.setSize((long) page.getSize());
-        resPage.setTotal(page.getTotalElements());
-        resPage.setRecords(page.getContent());
+        resPage.setCurrent((long) (pageNum + 1));
+        resPage.setPages((long) ((allResults.size() + pageSize - 1) / pageSize));
+        resPage.setSize((long) pageSize);
+        resPage.setTotal((long) allResults.size());
+        resPage.setRecords(pageContent);
 
         log.debug("Query page: page={}, size={}, total={}, records={}",
-                pageNum + 1, pageSize, page.getTotalElements(), page.getContent().size());
+                pageNum + 1, pageSize, allResults.size(), pageContent.size());
         return resPage;
+    }
+
+    private List<T> findAll() {
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<T> query = cb.createQuery(entityClass);
+        query.from(entityClass);
+        return entityManager.createQuery(query).getResultList();
     }
 
     private List<T> queryByCondition(T condition) {
@@ -167,14 +172,14 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
             return List.of();
         }
         return entities.stream()
-                .map(jpaRepository::save)
+                .map(entityManager::merge)
                 .toList();
     }
 
     @Override
     public void removeBatchByIds(List<ID> ids) {
         if (ids != null) {
-            ids.forEach(jpaRepository::deleteById);
+            ids.forEach(this::removeById);
         }
     }
 
@@ -183,13 +188,16 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
         if (ids == null || ids.isEmpty()) {
             return List.of();
         }
-        return jpaRepository.findAllById(ids);
+        return ids.stream()
+                .map(this::findById)
+                .filter(java.util.Objects::nonNull)
+                .toList();
     }
 
     @Override
     public long count(T condition) {
         if (condition == null) {
-            return jpaRepository.count();
+            return findAll().size();
         }
         return queryList(condition).size();
     }

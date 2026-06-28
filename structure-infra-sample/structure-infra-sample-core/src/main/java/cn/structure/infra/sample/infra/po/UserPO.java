@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import jakarta.persistence.*;
 import lombok.Data;
+import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 
@@ -12,6 +13,8 @@ import java.time.LocalDateTime;
 @TableName("t_user")
 @Entity
 @Table(name = "t_user")
+@Document(collection = "t_user")
+@org.springframework.data.elasticsearch.annotations.Document(indexName = "t_user")
 public class UserPO {
 
     @Id
