@@ -151,6 +151,11 @@ class MongoLowCodeRepositoryTest {
     private void setupMock() {
         when(mongoTemplate.getConverter()).thenReturn(mongoConverter);
 
+        // Mock indexOps
+        org.springframework.data.mongodb.core.index.IndexOperations mockIndexOps = mock(org.springframework.data.mongodb.core.index.IndexOperations.class);
+        when(mongoTemplate.indexOps(anyString())).thenReturn(mockIndexOps);
+        when(mongoTemplate.indexOps(any(Class.class))).thenReturn(mockIndexOps);
+
         when(mongoTemplate.collectionExists(anyString())).thenReturn(true);
 
         doAnswer(invocation -> {
