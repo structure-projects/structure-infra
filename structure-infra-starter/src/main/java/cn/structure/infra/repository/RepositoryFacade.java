@@ -92,9 +92,7 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
 
     @Override
     public T findById(ID id) {
-        P po = executeReadOperation(
-                () -> readDelegate.findById(id),
-                () -> baseDelegate.findById(id));
+        P po = baseDelegate.findById(id);
         return toEntity(po);
     }
 
@@ -205,9 +203,7 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
 
     @Override
     public boolean exists(T entity) {
-        return executeReadOperation(
-                () -> readDelegate.exists(toPo(entity)),
-                () -> baseDelegate.exists(toPo(entity)));
+        return baseDelegate.exists(toPo(entity));
     }
 
     /**
