@@ -3,10 +3,12 @@ package cn.structure.infra.sample.mongodb.config;
 import com.mongodb.client.MongoClients;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.SimpleMongoClientDatabaseFactory;
 
 @Configuration
+@Profile("!mongo-test")
 public class MongoConfig {
 
     @Bean

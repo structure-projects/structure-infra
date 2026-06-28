@@ -7,10 +7,10 @@
 ```
 structure-infra-sample/
 ├── structure-infra-sample-core           # 核心共享模块（Entity、PO、Repository接口）
-├── structure-infra-sample-mybatis        # MyBatis Plus 示例模块
+├── structure-infra-sample-mybatis        # MyBatis Plus 示例模块（含低代码测试）
 ├── structure-infra-sample-jpa            # JPA 示例模块
-├── structure-infra-sample-mongodb        # MongoDB 示例模块（含 REST API）
-├── structure-infra-sample-elasticsearch  # Elasticsearch 示例模块（含 REST API）
+├── structure-infra-sample-mongodb        # MongoDB 示例模块（含 REST API、低代码测试）
+├── structure-infra-sample-elasticsearch  # Elasticsearch 示例模块（含 REST API、低代码测试）
 └── structure-infra-sample-cqrs           # CQRS 读写分离示例模块
 ```
 
@@ -41,6 +41,7 @@ structure-infra-sample/
 - 分页查询支持
 - 条件查询支持
 - Entity 与 PO 转换
+- 低代码仓储测试（MySQL 实现）
 
 **运行测试**：
 ```bash
@@ -51,6 +52,10 @@ mvn test -pl structure-infra-sample/structure-infra-sample-mybatis
 - `InfraSampleApplication.java` - 启动类
 - `UserMybatisPlusDelegate.java` - MyBatis Plus 实现
 - `UserRepositoryTest.java` - 完整测试用例
+- `lowcode/LowCodeTestConfig.java` - 低代码测试配置
+- `lowcode/LowCodeRepositoryTest.java` - 低代码仓储测试
+
+**状态**：✅ 已完成，测试通过
 
 ---
 
@@ -67,6 +72,7 @@ mvn test -pl structure-infra-sample/structure-infra-sample-mybatis
 - 分页查询支持
 - 动态查询支持
 - 生产环境配置
+- 低代码仓储测试（MongoDB 实现）
 
 **启动服务**：
 ```bash
@@ -109,6 +115,7 @@ curl "http://localhost:8081/api/users/page?page=1&size=10"
 - `UserMongoRepositoryImpl.java` - 仓储实现
 - `MockMongoConfiguration.java` - 测试 Mock 配置
 - `UserMongoRepositoryTest.java` - 测试用例
+- `lowcode/MongoLowCodeRepositoryTest.java` - 低代码仓储测试（通过 LowCodeRepository 接口）
 
 **配置文件**：
 - `application.yml` - 生产配置
@@ -131,6 +138,7 @@ curl "http://localhost:8081/api/users/page?page=1&size=10"
 - 分页查询支持
 - 全文搜索支持
 - 生产环境配置
+- 低代码仓储测试（Elasticsearch 实现）
 
 **启动服务**：
 ```bash
@@ -173,6 +181,7 @@ curl "http://localhost:8082/api/users/page?page=1&size=10"
 - `UserElasticsearchRepositoryImpl.java` - 仓储实现
 - `MockElasticsearchConfiguration.java` - 测试 Mock 配置
 - `UserElasticsearchRepositoryTest.java` - 测试用例
+- `lowcode/ElasticsearchLowCodeRepositoryTest.java` - 低代码仓储测试（通过 LowCodeRepository 接口）
 
 **配置文件**：
 - `application.yml` - 生产配置（支持从配置文件读取 ES 连接信息）
@@ -230,6 +239,58 @@ mvn test -pl structure-infra-sample/structure-infra-sample-cqrs
 - `UserCqrsRepositoryTest.java` - CQRS 测试用例
 
 **状态**：基础实现已完成
+
+---
+
+## 低代码仓储测试
+
+低代码仓储是一套无需定义实体类的动态数据访问方案，通过 `LowCodeRepository` 接口统一操作不同存储引擎。
+
+### 测试覆盖
+
+所有低代码测试均通过 `LowCodeRepository` 接口进行，验证完整的路由机制：
+
+| 方法 | 说明 | MySQL | MongoDB | Elasticsearch |
+|------|------|:-----:|:-------:|:-------------:|
+| `save` | 新增和更新 | ✅ | ✅ | ✅ |
+| `findById` | 根据 ID 查询 | ✅ | ✅ | ✅ |
+| `queryById` | 根据 ID 查询（读操作） | ✅ | ✅ | ✅ |
+| `queryByIdOptional` | 根据 ID 查询（Optional） | ✅ | ✅ | ✅ |
+| `queryOne` | 条件查询单条 | ✅ | ✅ | ✅ |
+| `queryOneOptional` | 条件查询单条（Optional） | ✅ | ✅ | ✅ |
+| `queryList` | 条件查询列表 | ✅ | ✅ | ✅ |
+| `queryPage` | 分页查询 | ✅ | ✅ | ✅ |
+| `removeById` | 根据 ID 删除 | ✅ | ✅ | ✅ |
+| `saveBatch` | 批量保存 | ✅ | ✅ | ✅ |
+| `removeBatchByIds` | 批量删除 | ✅ | ✅ | ✅ |
+| `listByIds` | 批量查询 | ✅ | ✅ | ✅ |
+| `count` | 统计数量 | ✅ | ✅ | ✅ |
+| `exists` | 判断存在 | ✅ | ✅ | ✅ |
+| `testAutoFill` | 自动填充时间字段 | ✅ | ✅ | ✅ |
+
+### 运行低代码测试
+
+```bash
+# MySQL 低代码测试
+mvn test -pl structure-infra-sample/structure-infra-sample-mybatis \
+  -Dtest="cn.structure.infra.sample.lowcode.LowCodeRepositoryTest"
+
+# MongoDB 低代码测试
+mvn test -pl structure-infra-sample/structure-infra-sample-mongodb \
+  -Dtest="cn.structure.infra.sample.mongodb.lowcode.MongoLowCodeRepositoryTest"
+
+# Elasticsearch 低代码测试
+mvn test -pl structure-infra-sample/structure-infra-sample-elasticsearch \
+  -Dtest="cn.structure.infra.sample.elasticsearch.lowcode.ElasticsearchLowCodeRepositoryTest"
+```
+
+### 测试策略
+
+低代码测试采用纯单元测试方式，使用 Mockito 直接模拟底层存储模板：
+
+- **MySQL**：模拟 MyBatis Plus 的 Mapper，使用内存 Map 存储数据
+- **MongoDB**：模拟 MongoTemplate，使用内存 Map 模拟集合，支持 Query 条件解析
+- **Elasticsearch**：模拟 ElasticsearchOperations，使用内存 Map 模拟索引，支持 Criteria 条件解析
 
 ---
 
@@ -381,6 +442,7 @@ structure-infra-sample-cqrs
 3. **配置读取**：ES 配置类会自动从 application.yml 读取连接信息
 4. **依赖隔离**：每个示例模块都排除了其他存储技术的依赖，避免冲突
 5. **代码复用**：所有模块共享 core 模块中的 Entity、PO、Repository 接口
+6. **低代码测试**：低代码测试使用纯单元测试方式，不依赖 Spring 上下文，执行速度更快
 
 ---
 

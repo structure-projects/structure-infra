@@ -11,6 +11,7 @@
 - **自动配置**：基于 Spring Boot AutoConfiguration 实现开箱即用
 - **Entity-PO 自动转换**：RepositoryFacade 自动完成领域实体与持久化对象的转换
 - **CQRS 读写分离**：支持一个仓储配置多个代理，写操作走基础代理，读操作走读代理
+- **低代码仓储**：无需定义实体类，通过资源名称和 Map 动态操作数据，支持运行时动态注册
 
 ## 模块结构
 
@@ -28,17 +29,33 @@ structure-pro-infra/
 │   │   ├── RepositoryType.java        # 仓储类型枚举
 │   │   ├── DelegateType.java          # 委托类型枚举（BASE/READ）
 │   │   └── InMemoryRepositoryDelegate.java # 内存实现（开发/测试用）
+│   ├── lowcode/                       # 低代码仓储
+│   │   ├── repository/                # 低代码仓储接口
+│   │   │   ├── LowCodeRepository.java # 低代码统一仓储接口（用户侧）
+│   │   │   ├── LowCodeStorage.java    # 低代码存储接口（引擎侧）
+│   │   │   └── LowCodeRepoFactory.java # 低代码仓储工厂接口
+│   │   ├── router/                    # 路由引擎
+│   │   │   └── LowCodeRepositoryRouter.java # 低代码仓储路由器
+│   │   ├── model/                     # 模型定义
+│   │   │   ├── ResourceSchema.java    # 资源 schema
+│   │   │   ├── FieldSchema.java       # 字段 schema
+│   │   │   ├── StorageType.java       # 存储类型枚举
+│   │   │   ├── FieldType.java         # 字段类型枚举
+│   │   │   ├── AutoFillType.java      # 自动填充类型枚举
+│   │   │   └── RepositoryConfig.java  # 仓储配置
+│   │   └── registry/                  # 注册与构建
+│   │       └── ResourceSchemaBuilder.java # 资源 schema 构建器
 │   └── event/                         # 事件管理
-├── structure-infra-mybatis-plus-starter/ # MyBatis Plus 适配
+├── structure-infra-mybatis-plus-starter/ # MyBatis Plus 适配（含低代码实现）
 ├── structure-infra-jpa-starter/        # JPA 适配
-├── structure-infra-mongodb-starter/    # MongoDB 适配
-├── structure-infra-elasticsearch-starter/ # Elasticsearch 适配
+├── structure-infra-mongodb-starter/    # MongoDB 适配（含低代码实现）
+├── structure-infra-elasticsearch-starter/ # Elasticsearch 适配（含低代码实现）
 └── structure-infra-sample/             # 示例模块
     ├── structure-infra-sample-core/        # 共享核心（Entity、PO、Repository接口）
-    ├── structure-infra-sample-mybatis/     # MyBatis Plus 示例
+    ├── structure-infra-sample-mybatis/     # MyBatis Plus 示例（含低代码测试）
     ├── structure-infra-sample-jpa/         # JPA 示例
-    ├── structure-infra-sample-mongodb/     # MongoDB 示例（含 REST API）
-    ├── structure-infra-sample-elasticsearch/ # Elasticsearch 示例（含 REST API）
+    ├── structure-infra-sample-mongodb/     # MongoDB 示例（含低代码测试）
+    ├── structure-infra-sample-elasticsearch/ # Elasticsearch 示例（含低代码测试）
     └── structure-infra-sample-cqrs/        # CQRS 读写分离示例
 ```
 
@@ -92,6 +109,39 @@ structure-pro-infra/
 |-----|------|
 | `BASE` | 基础代理，承担写操作和默认读操作 |
 | `READ` | 读代理，专门承担读操作（CQRS 模式下使用） |
+
+### 低代码仓储
+
+低代码仓储是一套无需定义实体类和 PO 类的动态数据访问方案，通过资源名称和 `Map<String, Object>` 来操作数据。
+
+**核心特点**：
+- **零实体类**：无需定义 Java 实体类，通过 DSL/配置动态定义资源结构
+- **动态注册**：支持运行时动态注册新资源，无需重启应用
+- **多存储引擎**：同一套 API 支持 MySQL、MongoDB、Elasticsearch 等多种存储
+- **自动建表**：资源注册时自动创建表/集合/索引
+- **自动填充**：支持创建时间、更新时间等字段自动填充
+- **统一路由**：通过 `LowCodeRepositoryRouter` 统一路由到对应存储引擎
+
+**核心组件**：
+
+| 组件 | 说明 |
+|------|------|
+| `LowCodeRepository` | 用户侧统一接口，方法名与 `ICrudRepository` 一致 |
+| `LowCodeStorage` | 存储引擎侧接口，各存储引擎实现此接口 |
+| `LowCodeRepoFactory` | 仓储工厂，创建具体的 `LowCodeStorage` 实例 |
+| `LowCodeRepositoryRouter` | 路由引擎，根据资源名路由到对应存储 |
+| `ResourceSchema` | 资源 schema 定义，描述资源的字段、索引等 |
+| `FieldSchema` | 字段 schema 定义，描述单个字段的属性 |
+
+**支持的存储类型**：
+
+| 类型 | 实现模块 | 说明 |
+|------|---------|------|
+| `MYSQL` | structure-infra-mybatis-plus-starter | 基于 MyBatis Plus 实现 |
+| `MONGODB` | structure-infra-mongodb-starter | 基于 MongoTemplate + Document 实现 |
+| `ELASTICSEARCH` | structure-infra-elasticsearch-starter | 基于 ElasticsearchOperations + Map 实现 |
+| `REDIS` | - | 规划中 |
+| `IN_MEMORY` | - | 规划中（测试用） |
 
 ## 快速开始
 
@@ -270,6 +320,91 @@ public class UserReadDelegate extends ElasticsearchRepositoryDelegate<UserPO, Lo
 - 读操作（findById、queryList、queryPage、count、exists 等）优先走 READ 代理（Elasticsearch）
 - 如果 READ 代理执行失败（抛出异常），自动回退到 BASE 代理执行
 - BASE 代理是最后的兜底，确保读操作始终可用
+
+### 6. 低代码仓储使用
+
+低代码仓储无需定义实体类，通过资源名称和 Map 操作数据。
+
+**1) 定义资源 Schema**
+
+```java
+ResourceSchema schema = ResourceSchema.builder()
+    .resourceName("article")
+    .tableName("t_lowcode_article")
+    .build();
+
+schema.addField(FieldSchema.builder()
+    .name("id")
+    .type(FieldType.LONG)
+    .primaryKey(true)
+    .build());
+
+schema.addField(FieldSchema.builder()
+    .name("title")
+    .type(FieldType.STRING)
+    .length(200)
+    .nullable(false)
+    .build());
+
+schema.addField(FieldSchema.builder()
+    .name("author")
+    .type(FieldType.STRING)
+    .index(true)
+    .build());
+
+schema.addField(FieldSchema.builder()
+    .name("created_at")
+    .type(FieldType.DATETIME)
+    .autoFill(AutoFillType.CREATE)
+    .build());
+```
+
+**2) 注册资源并使用**
+
+```java
+@Autowired
+private LowCodeRepositoryRouter lowCodeRepositoryRouter;
+
+// 注册资源（通常在启动时或配置中完成）
+RepositoryConfig config = new RepositoryConfig();
+config.setType(StorageType.MONGODB);
+lowCodeRepositoryRouter.registerResource("article", schema, config);
+
+// 保存数据
+Map<String, Object> article = new HashMap<>();
+article.put("title", "Hello World");
+article.put("author", "zhangsan");
+Map<String, Object> saved = lowCodeRepositoryRouter.save("article", article);
+
+// 查询数据
+Map<String, Object> found = lowCodeRepositoryRouter.findById("article", 1L);
+
+// 条件查询
+Map<String, Object> params = new HashMap<>();
+params.put("author", "zhangsan");
+List<Map<String, Object>> list = lowCodeRepositoryRouter.queryList("article", params);
+
+// 分页查询
+ReqPage reqPage = new ReqPage();
+reqPage.setPage(1);
+reqPage.setSize(10);
+ResPage<Map<String, Object>> page = lowCodeRepositoryRouter.queryPage("article", reqPage);
+```
+
+**3) 切换存储引擎**
+
+只需修改 `RepositoryConfig` 的 `type` 即可切换存储引擎，业务代码无需修改：
+
+```java
+// 使用 MySQL
+config.setType(StorageType.MYSQL);
+
+// 使用 MongoDB
+config.setType(StorageType.MONGODB);
+
+// 使用 Elasticsearch
+config.setType(StorageType.ELASTICSEARCH);
+```
 
 ## 注解说明
 
