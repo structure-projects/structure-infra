@@ -26,6 +26,10 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2
 
+      - name: Install dependencies
+        run: |
+          mvn install -DskipTests -s .mvn/settings.xml
+
       - name: Run unit tests
         run: |
           cd structure-infra-sample
