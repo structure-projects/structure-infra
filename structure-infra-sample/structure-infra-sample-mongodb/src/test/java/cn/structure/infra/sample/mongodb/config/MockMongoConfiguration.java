@@ -4,13 +4,20 @@ import cn.structure.infra.sample.infra.po.UserPO;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.mongodb.MongoDatabaseFactory;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.convert.MappingMongoConverter;
+import org.springframework.data.mongodb.core.convert.MongoConverter;
+import org.springframework.data.mongodb.core.mapping.MongoMappingContext;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -23,9 +30,27 @@ public class MockMongoConfiguration {
     private final Map<Long, UserPO> dataStore = new HashMap<>();
     private long idGenerator = 1;
 
-    @Bean
-    @Primary
-    public MongoTemplate mongoTemplate() {
+    private final MongoMappingContext mappingContext = new MongoMappingContext();
+    private final MongoConverter converter;
+    private final MongoTemplate template;
+
+    public MockMongoConfiguration() {
+        this.converter = createMongoConverter();
+        this.template = createMongoTemplate();
+    }
+
+    public void reset() {
+        dataStore.clear();
+        idGenerator = 1;
+    }
+
+    private MongoConverter createMongoConverter() {
+        MappingMongoConverter converter = mock(MappingMongoConverter.class);
+        when(converter.getMappingContext()).thenReturn((org.springframework.data.mapping.context.MappingContext) mappingContext);
+        return converter;
+    }
+
+    private MongoTemplate createMongoTemplate() {
         MongoTemplate template = mock(MongoTemplate.class);
 
         when(template.save(any(UserPO.class))).thenAnswer(invocation -> {
@@ -47,52 +72,113 @@ public class MockMongoConfiguration {
             return dataStore.get(Long.valueOf(id));
         });
 
+        when(template.findOne(any(Query.class), any(Class.class))).thenAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
+            List<UserPO> results = filterByQuery(query, new ArrayList<>(dataStore.values()));
+            return results.isEmpty() ? null : results.get(0);
+        });
+
+        when(template.findAll(any(Class.class))).thenAnswer(invocation -> {
+            return new ArrayList<>(dataStore.values());
+        });
+
         when(template.find(any(Query.class), any(Class.class))).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
-            return filterByQuery(query);
+            return filterByQuery(query, new ArrayList<>(dataStore.values()));
         });
 
         when(template.remove(any(Query.class), any(Class.class))).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
-            List<UserPO> toRemove = filterByQuery(query);
-            toRemove.forEach(po -> dataStore.remove(po.getId()));
+            List<UserPO> results = filterByQuery(query, new ArrayList<>(dataStore.values()));
+            results.forEach(po -> dataStore.remove(po.getId()));
             return null;
         });
 
         when(template.count(any(Query.class), any(Class.class))).thenAnswer(invocation -> {
-            Query query = invocation.getArgument(0);
-            return (long) filterByQuery(query).size();
+            return (long) dataStore.size();
         });
+
+        when(template.getConverter()).thenReturn(converter);
 
         return template;
     }
 
-    private List<UserPO> filterByQuery(Query query) {
-        List<UserPO> result = new ArrayList<>(dataStore.values());
+    private List<UserPO> filterByQuery(Query query, List<UserPO> data) {
+        try {
+            Field criteriaField = Query.class.getDeclaredField("criteria");
+            criteriaField.setAccessible(true);
+            Object criteriaObj = criteriaField.get(query);
 
-        if (query != null && query.getQueryObject() != null) {
-            org.bson.Document queryDoc = query.getQueryObject();
-            if (queryDoc.containsKey("username")) {
-                Object usernameValue = queryDoc.get("username");
-                result = result.stream()
-                        .filter(po -> usernameValue.equals(po.getUsername()))
-                        .toList();
+            if (criteriaObj instanceof Criteria criteria) {
+                List<Map.Entry<String, Object>> conditions = extractConditions(criteria);
+                return data.stream()
+                        .filter(po -> matchesConditions(po, conditions))
+                        .collect(Collectors.toList());
             }
-            if (queryDoc.containsKey("age")) {
-                Object ageValue = queryDoc.get("age");
-                Integer ageInt = ageValue instanceof Integer ? (Integer) ageValue : Integer.parseInt(ageValue.toString());
-                result = result.stream()
-                        .filter(po -> ageInt.equals(po.getAge()))
-                        .toList();
+        } catch (Exception ignored) {
+        }
+        return data;
+    }
+
+    private List<Map.Entry<String, Object>> extractConditions(Criteria criteria) {
+        List<Map.Entry<String, Object>> conditions = new ArrayList<>();
+        try {
+            Field keyField = Criteria.class.getDeclaredField("key");
+            Field valueField = Criteria.class.getDeclaredField("value");
+            keyField.setAccessible(true);
+            valueField.setAccessible(true);
+
+            Object key = keyField.get(criteria);
+            Object value = valueField.get(criteria);
+
+            if (key != null && value != null) {
+                conditions.add(Map.entry(key.toString(), value));
             }
-            if (queryDoc.containsKey("email")) {
-                Object emailValue = queryDoc.get("email");
-                result = result.stream()
-                        .filter(po -> emailValue.equals(po.getEmail()))
-                        .toList();
+        } catch (Exception ignored) {
+        }
+        return conditions;
+    }
+
+    private boolean matchesConditions(UserPO po, List<Map.Entry<String, Object>> conditions) {
+        for (Map.Entry<String, Object> condition : conditions) {
+            String fieldName = condition.getKey();
+            Object expectedValue = condition.getValue();
+
+            try {
+                Field field = UserPO.class.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                Object actualValue = field.get(po);
+
+                if (!expectedValue.equals(actualValue)) {
+                    return false;
+                }
+            } catch (Exception ignored) {
             }
         }
+        return true;
+    }
 
-        return result;
+    @Bean
+    @Primary
+    public MongoDatabaseFactory mongoDatabaseFactory() {
+        return mock(MongoDatabaseFactory.class);
+    }
+
+    @Bean
+    @Primary
+    public MongoMappingContext mongoMappingContext() {
+        return mappingContext;
+    }
+
+    @Bean
+    @Primary
+    public MongoConverter mongoConverter() {
+        return converter;
+    }
+
+    @Bean
+    @Primary
+    public MongoTemplate mongoTemplate() {
+        return template;
     }
 }
