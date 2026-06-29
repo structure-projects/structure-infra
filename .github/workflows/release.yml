@@ -46,7 +46,7 @@ jobs:
         
     - name: Deploy to Maven Central
       run: |
-        mvn clean deploy -P release,oss -Dmaven.test.skip=true -Drevision=$RELEASE_VERSION -Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -s .mvn/settings.xml
+        mvn clean deploy -P release,oss,!sample -Dmaven.test.skip=true -Drevision=$RELEASE_VERSION -Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -s .mvn/settings.xml
       env:
         OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
         OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
