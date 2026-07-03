@@ -17,7 +17,7 @@ public class PaymentEventListener {
                 event.getPaymentId(), event.getOrderId(), event.getPaymentStatus(), event.getAmount());
     }
 
-    @StreamEventListener(bindingName = "paymentEvent", destination = "payment-exchange", group = "payment-group", condition = "#event.paymentStatus == 'SUCCESS'")
+    @StreamEventListener(bindingName = "paymentEvent1", destination = "payment-exchange", group = "payment-group", condition = "#event.paymentStatus == 'SUCCESS'")
     public void handlePaymentSuccess(PaymentEvent event) {
         log.info("[支付成功] paymentId={}, orderId={}, amount={}",
                 event.getPaymentId(), event.getOrderId(), event.getAmount());
