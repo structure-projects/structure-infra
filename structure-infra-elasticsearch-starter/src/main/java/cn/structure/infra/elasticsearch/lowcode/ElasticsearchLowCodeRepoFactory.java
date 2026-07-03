@@ -36,11 +36,25 @@ public class ElasticsearchLowCodeRepoFactory implements LowCodeRepoFactory {
         this.elasticsearchOperations = elasticsearchOperations;
     }
 
+    /**
+     * 返回该工厂支持的存储类型，用于低代码路由引擎匹配。
+     *
+     * @return 固定返回 {@link StorageType#ELASTICSEARCH}
+     */
     @Override
     public StorageType getType() {
         return StorageType.ELASTICSEARCH;
     }
 
+    /**
+     * 创建 Elasticsearch 低代码存储实例。
+     * <p>
+     * 内部构造 {@link ElasticsearchLowCodeStorage}，由其在初始化时自动创建索引（不创建 mapping）。
+     *
+     * @param schema 资源 schema 定义（索引名、字段、主键等）
+     * @param config 仓储配置（当前实现未使用，保留以匹配 SPI 签名）
+     * @return 低代码存储实例
+     */
     @Override
     public LowCodeStorage createStorage(ResourceSchema schema, RepositoryConfig config) {
         return new ElasticsearchLowCodeStorage(schema, elasticsearchOperations);

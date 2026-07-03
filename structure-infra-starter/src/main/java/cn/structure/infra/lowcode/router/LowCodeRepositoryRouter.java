@@ -74,9 +74,11 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
      * @param config       仓储配置
      */
     public void registerResource(String resourceName, ResourceSchema schema, RepositoryConfig config) {
+        // 1. 创建基础存储实例（写操作 + 兜底读操作）
         LowCodeStorage baseStorage = createStorage(schema, config.getType(), config);
         LowCodeStorage readStorage = null;
 
+        // 2. CQRS 模式下创建独立的读存储实例（如 Elasticsearch）
         if (config.isCqrsEnabled() && config.getCqrs().getReadType() != null) {
             try {
                 RepositoryConfig readConfig = new RepositoryConfig();
@@ -84,14 +86,17 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
                 readConfig.setDatasource(config.getCqrs().getReadDatasource());
                 readStorage = createStorage(schema, config.getCqrs().getReadType(), readConfig);
             } catch (Exception e) {
+                // 读存储创建失败不影响基础存储，读操作会回退到基础存储
                 log.warn("Failed to create read storage for resource {}, falling back to base: {}",
                         resourceName, e.getMessage());
             }
         }
 
+        // 3. 注册到路由表
         StorageHolder holder = new StorageHolder(schema, config, baseStorage, readStorage);
         storageRegistry.put(resourceName, holder);
 
+        // 4. 初始化存储容器（建表/建集合），失败仅告警不中断注册
         try {
             baseStorage.initialize();
             if (readStorage != null && readStorage != baseStorage) {
@@ -149,14 +154,17 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
                               Function<LowCodeStorage, R> readOperation,
                               Function<LowCodeStorage, R> fallbackOperation) {
         StorageHolder holder = getHolder(resourceName);
+        // CQRS 启用且存在读存储：优先走读存储，异常时回退到基础存储
         if (holder.readStorage != null && holder.config.isCqrsEnabled()) {
             try {
                 return readOperation.apply(holder.readStorage);
             } catch (Exception e) {
+                // 读存储异常时回退到基础存储，保证可用性
                 log.warn("Read storage operation failed for resource {}, falling back to base: {}",
                         resourceName, e.getMessage());
             }
         }
+        // 兜底路径：直接走基础存储
         return fallbackOperation.apply(holder.baseStorage);
     }
 
@@ -186,22 +194,51 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
         writeOperation.accept(holder.baseStorage);
     }
 
+    /**
+     * 保存数据（写操作，走基础存储）
+     *
+     * @param resourceName 资源名称
+     * @param data         数据 Map
+     * @return 保存后的数据
+     */
     @Override
     public Map<String, Object> save(String resourceName, Map<String, Object> data) {
         return executeWrite(resourceName, storage -> storage.save(data));
     }
 
+    /**
+     * 根据 ID 删除（写操作，走基础存储）
+     *
+     * @param resourceName 资源名称
+     * @param id           主键值
+     */
     @Override
     public void removeById(String resourceName, Object id) {
         executeWriteVoid(resourceName, storage -> storage.removeById(id));
     }
 
+    /**
+     * 根据 ID 查询（写操作路径，走基础存储）
+     * <p>
+     * 此方法对应 ICrudRepository 契约，不参与 CQRS 路由。
+     *
+     * @param resourceName 资源名称
+     * @param id           主键值
+     * @return 数据 Map，不存在时返回 null
+     */
     @Override
     public Map<String, Object> findById(String resourceName, Object id) {
         StorageHolder holder = getHolder(resourceName);
         return holder.baseStorage.findById(id);
     }
 
+    /**
+     * 根据 ID 查询（读操作，支持 CQRS 路由）
+     *
+     * @param resourceName 资源名称
+     * @param id           主键值
+     * @return 数据 Map，不存在时返回 null
+     */
     @Override
     public Map<String, Object> queryById(String resourceName, Object id) {
         return executeRead(resourceName,
@@ -209,6 +246,13 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
                 storage -> storage.queryById(id));
     }
 
+    /**
+     * 根据 ID 查询（Optional 包装，读操作，支持 CQRS 路由）
+     *
+     * @param resourceName 资源名称
+     * @param id           主键值
+     * @return Optional 包装的数据
+     */
     @Override
     public Optional<Map<String, Object>> queryByIdOptional(String resourceName, Object id) {
         return executeRead(resourceName,
@@ -228,6 +272,13 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
         return Map.of(holder.schema.getIdFieldName(), id);
     }
 
+    /**
+     * 条件查询单条记录（读操作，支持 CQRS 路由）
+     *
+     * @param resourceName 资源名称
+     * @param queryParams  查询条件
+     * @return 单条数据，不存在时返回 null
+     */
     @Override
     public Map<String, Object> queryOne(String resourceName, Map<String, Object> queryParams) {
         return executeRead(resourceName,
@@ -235,6 +286,13 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
                 storage -> storage.queryOne(queryParams));
     }
 
+    /**
+     * 条件查询单条记录（Optional 包装，读操作，支持 CQRS 路由）
+     *
+     * @param resourceName 资源名称
+     * @param queryParams  查询条件
+     * @return Optional 包装的数据
+     */
     @Override
     public Optional<Map<String, Object>> queryOneOptional(String resourceName, Map<String, Object> queryParams) {
         return executeRead(resourceName,
@@ -242,6 +300,13 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
                 storage -> storage.queryOneOptional(queryParams));
     }
 
+    /**
+     * 条件查询列表（读操作，支持 CQRS 路由）
+     *
+     * @param resourceName 资源名称
+     * @param queryParams  查询条件，为 null 时查询全部
+     * @return 数据列表
+     */
     @Override
     public List<Map<String, Object>> queryList(String resourceName, Map<String, Object> queryParams) {
         return executeRead(resourceName,
@@ -249,6 +314,13 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
                 storage -> storage.queryList(queryParams));
     }
 
+    /**
+     * 分页查询（读操作，支持 CQRS 路由）
+     *
+     * @param resourceName 资源名称
+     * @param reqPage      分页参数
+     * @return 分页结果
+     */
     @Override
     public ResPage<Map<String, Object>> queryPage(String resourceName, ReqPage reqPage) {
         return executeRead(resourceName,
@@ -256,16 +328,36 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
                 storage -> storage.queryPage(reqPage));
     }
 
+    /**
+     * 批量保存（写操作，走基础存储）
+     *
+     * @param resourceName 资源名称
+     * @param dataList     数据列表
+     * @return 保存后的数据列表
+     */
     @Override
     public List<Map<String, Object>> saveBatch(String resourceName, List<Map<String, Object>> dataList) {
         return executeWrite(resourceName, storage -> storage.saveBatch(dataList));
     }
 
+    /**
+     * 根据 ID 批量删除（写操作，走基础存储）
+     *
+     * @param resourceName 资源名称
+     * @param ids          主键列表
+     */
     @Override
     public void removeBatchByIds(String resourceName, List<Object> ids) {
         executeWriteVoid(resourceName, storage -> storage.removeBatchByIds(ids));
     }
 
+    /**
+     * 根据 ID 列表批量查询（读操作，支持 CQRS 路由）
+     *
+     * @param resourceName 资源名称
+     * @param ids          主键列表
+     * @return 数据列表
+     */
     @Override
     public List<Map<String, Object>> listByIds(String resourceName, List<Object> ids) {
         return executeRead(resourceName,
@@ -273,6 +365,13 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
                 storage -> storage.listByIds(ids));
     }
 
+    /**
+     * 统计数量（读操作，支持 CQRS 路由）
+     *
+     * @param resourceName 资源名称
+     * @param queryParams  查询条件
+     * @return 记录数量
+     */
     @Override
     public long count(String resourceName, Map<String, Object> queryParams) {
         return executeRead(resourceName,
@@ -280,6 +379,13 @@ public class LowCodeRepositoryRouter implements LowCodeRepository {
                 storage -> storage.count(queryParams));
     }
 
+    /**
+     * 判断是否存在（写操作路径，走基础存储）
+     *
+     * @param resourceName 资源名称
+     * @param queryParams  查询条件
+     * @return true 表示存在
+     */
     @Override
     public boolean exists(String resourceName, Map<String, Object> queryParams) {
         StorageHolder holder = getHolder(resourceName);

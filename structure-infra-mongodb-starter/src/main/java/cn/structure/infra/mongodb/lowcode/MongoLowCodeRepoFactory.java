@@ -36,11 +36,25 @@ public class MongoLowCodeRepoFactory implements LowCodeRepoFactory {
         this.mongoTemplate = mongoTemplate;
     }
 
+    /**
+     * 返回该工厂支持的存储类型，用于低代码路由引擎匹配。
+     *
+     * @return 固定返回 {@link StorageType#MONGODB}
+     */
     @Override
     public StorageType getType() {
         return StorageType.MONGODB;
     }
 
+    /**
+     * 创建 MongoDB 低代码存储实例。
+     * <p>
+     * 内部构造 {@link MongoLowCodeStorage}，由其在初始化时自动创建集合与索引。
+     *
+     * @param schema 资源 schema 定义（集合名、字段、主键、索引等）
+     * @param config 仓储配置（当前实现未使用，保留以匹配 SPI 签名）
+     * @return 低代码存储实例
+     */
     @Override
     public LowCodeStorage createStorage(ResourceSchema schema, RepositoryConfig config) {
         return new MongoLowCodeStorage(schema, mongoTemplate);

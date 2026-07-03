@@ -9,7 +9,12 @@ import jakarta.persistence.EntityManager;
 /**
  * JPA 仓储委托工厂
  * <p>
- * 自动创建 JpaRepositoryDelegate 实例
+ * 实现 {@link RepositoryDelegateFactory} SPI，自动创建 {@link JpaRepositoryDelegate} 实例。
+ * 在仓储框架中，当 {@code RepositoryFacade} 找不到用户自定义的 Delegate 时，会通过本工厂按 PO 类型
+ * 创建默认 Delegate 实例（依赖容器中的 {@link EntityManager}）。
+ * <p>
+ * 与 {@link JpaDelegateBeanPostProcessor} 的分工：本工厂负责"无自定义 Delegate 时创建默认实现"，
+ * BeanPostProcessor 负责"已有自定义子类时补齐依赖"。
  *
  * @author chuck
  * @version 1.0.1
@@ -17,17 +22,38 @@ import jakarta.persistence.EntityManager;
  */
 public class JpaDelegateFactory implements RepositoryDelegateFactory {
 
+    /** JPA 实体管理器，由容器注入并共享给所有 Delegate 实例 */
     private final EntityManager entityManager;
 
+    /**
+     * 构造工厂，注入 EntityManager。
+     *
+     * @param entityManager JPA 实体管理器，用于执行持久化操作
+     */
     public JpaDelegateFactory(EntityManager entityManager) {
         this.entityManager = entityManager;
     }
 
+    /**
+     * 返回该工厂支持的仓储类型，用于 SPI 路由匹配。
+     *
+     * @return 固定返回 {@link RepositoryType#JPA}
+     */
     @Override
     public RepositoryType getType() {
         return RepositoryType.JPA;
     }
 
+    /**
+     * 为指定 PO 类型创建 {@link JpaRepositoryDelegate} 实例。
+     * <p>
+     * JPA 实现不依赖 Mapper 查找，直接以入参 PO 类型构造 Delegate，因此失败概率较低；
+     * 出现异常时返回 null，由上层 RepositoryFacade 继续尝试其他工厂或抛出异常。
+     *
+     * @param poClass PO 实体类型
+     * @param idClass 主键类型（当前实现未使用，保留以匹配 SPI 签名）
+     * @return 已注入 EntityManager 的 Delegate 实例；构造异常时返回 null
+     */
     @Override
     @SuppressWarnings({"unchecked", "rawtypes"})
     public RepositoryDelegate<?, ?> createDelegate(Class<?> poClass, Class<?> idClass) {

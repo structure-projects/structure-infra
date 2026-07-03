@@ -39,6 +39,9 @@ import java.util.Optional;
 @Slf4j
 public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> implements ICrudRepository<T, ID> {
 
+    /**
+     * 数据权限缓存管理器（保留扩展点，子类可启用缓存）
+     */
     protected DataScopeCacheManager cacheManager;
 
     /**
@@ -58,13 +61,28 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
      */
     protected IQueryDelegate<P, ID> readDelegate;
 
+    /**
+     * 领域实体类型，用于 Entity ↔ PO 反射转换
+     */
     protected Class<T> entityClass;
 
+    /**
+     * 持久化对象类型，用于 Entity ↔ PO 反射转换
+     */
     protected Class<P> poClass;
 
+    /**
+     * 默认构造函数（用于无参实例化场景，需后续手动设置 entityClass/poClass）
+     */
     public RepositoryFacade() {
     }
 
+    /**
+     * 根据实体类和 PO 类构造 RepositoryFacade
+     *
+     * @param entityClass 领域实体类型
+     * @param poClass     持久化对象类型
+     */
     public RepositoryFacade(Class<T> entityClass, Class<P> poClass) {
         this.entityClass = entityClass;
         this.poClass = poClass;
@@ -79,31 +97,68 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         return baseDelegate;
     }
 
+    /**
+     * 保存实体（写操作，走 baseDelegate）
+     * <p>
+     * 流程：Entity → PO → baseDelegate.save → PO → Entity
+     *
+     * @param entity 领域实体
+     * @return 保存后的实体（包含可能生成的主键）
+     */
     @Override
     public T save(T entity) {
+        // Entity → PO 转换后交给基础代理持久化，再回转为 Entity
         P save = baseDelegate.save(toPo(entity));
         return toEntity(save);
     }
 
+    /**
+     * 根据主键删除（写操作，走 baseDelegate）
+     *
+     * @param id 主键
+     */
     @Override
     public void removeById(ID id) {
         baseDelegate.removeById(id);
     }
 
+    /**
+     * 根据主键查询（写操作路径，走 baseDelegate）
+     * <p>
+     * 此方法对应 ICrudRepository 契约，不参与 CQRS 路由，始终走基础代理。
+     *
+     * @param id 主键
+     * @return 实体对象，不存在时返回 null
+     */
     @Override
     public T findById(ID id) {
         P po = baseDelegate.findById(id);
         return toEntity(po);
     }
 
+    /**
+     * 根据主键查询（读操作，支持 CQRS 路由）
+     * <p>
+     * 优先走 readDelegate，失败回退到 baseDelegate
+     *
+     * @param id 主键
+     * @return 实体对象，不存在时返回 null
+     */
     @Override
     public T queryById(ID id) {
+        // 读操作：优先 readDelegate，失败回退 baseDelegate
         P po = executeReadOperation(
                 () -> readDelegate.queryById(id),
                 () -> baseDelegate.queryById(id));
         return toEntity(po);
     }
 
+    /**
+     * 根据主键查询（Optional 包装，读操作，支持 CQRS 路由）
+     *
+     * @param id 主键
+     * @return Optional 包装的实体
+     */
     @Override
     public Optional<T> queryByIdOptional(ID id) {
         P po = executeReadOperation(
@@ -112,6 +167,12 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         return Optional.ofNullable(toEntity(po));
     }
 
+    /**
+     * 条件查询单条记录（读操作，支持 CQRS 路由）
+     *
+     * @param entity 查询条件（非空属性作为等值条件）
+     * @return 单条实体，不存在时返回 null
+     */
     @Override
     public T queryOne(T entity) {
         P p = executeReadOperation(
@@ -120,6 +181,12 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         return toEntity(p);
     }
 
+    /**
+     * 条件查询单条记录（Optional 包装，读操作，支持 CQRS 路由）
+     *
+     * @param entity 查询条件
+     * @return Optional 包装的实体
+     */
     @Override
     public Optional<T> queryOneOptional(T entity) {
         Optional<P> p = executeReadOperation(
@@ -128,6 +195,12 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         return p.map(this::toEntity);
     }
 
+    /**
+     * 条件查询列表（读操作，支持 CQRS 路由）
+     *
+     * @param entity 查询条件，为 null 时查询全部
+     * @return 实体列表，永远不为 null
+     */
     @Override
     public List<T> queryList(T entity) {
         List<P> poList = executeReadOperation(
@@ -136,11 +209,20 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         if (poList == null || poList.isEmpty()) {
             return List.of();
         }
+        // PO 列表批量转换为 Entity 列表
         return poList.stream()
                 .map(this::toEntity)
                 .toList();
     }
 
+    /**
+     * 分页查询（读操作，支持 CQRS 路由）
+     * <p>
+     * 由于分页结果结构 {@link ResPage} 与实体类型绑定，需要逐项转换 PO → Entity。
+     *
+     * @param reqPage 分页参数
+     * @return 分页结果，代理返回 null 时本方法也返回 null
+     */
     @Override
     public ResPage<T> queryPage(ReqPage reqPage) {
         ResPage<P> poPage = executeReadOperation(
@@ -149,6 +231,7 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         if (poPage == null) {
             return null;
         }
+        // 复制分页元数据，仅对 records 进行 PO → Entity 转换
         ResPage<T> tPage = new ResPage<>();
         tPage.setCurrent(poPage.getCurrent());
         tPage.setPages(poPage.getPages());
@@ -162,11 +245,18 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         return tPage;
     }
 
+    /**
+     * 批量保存（写操作，走 baseDelegate）
+     *
+     * @param entities 实体列表
+     * @return 保存后的实体列表
+     */
     @Override
     public List<T> saveBatch(List<T> entities) {
         if (entities == null || entities.isEmpty()) {
             return List.of();
         }
+        // Entity 列表 → PO 列表，批量持久化后再回转
         List<P> poList = entities.stream()
                 .map(this::toPo)
                 .toList();
@@ -176,11 +266,22 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
                 .toList();
     }
 
+    /**
+     * 根据主键批量删除（写操作，走 baseDelegate）
+     *
+     * @param ids 主键列表
+     */
     @Override
     public void removeBatchByIds(List<ID> ids) {
         baseDelegate.removeBatchByIds(ids);
     }
 
+    /**
+     * 根据主键列表批量查询（读操作，支持 CQRS 路由）
+     *
+     * @param ids 主键列表
+     * @return 实体列表，永远不为 null
+     */
     @Override
     public List<T> listByIds(List<ID> ids) {
         List<P> poList = executeReadOperation(
@@ -194,6 +295,12 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
                 .toList();
     }
 
+    /**
+     * 统计数量（读操作，支持 CQRS 路由）
+     *
+     * @param entity 查询条件
+     * @return 记录数量
+     */
     @Override
     public long count(T entity) {
         return executeReadOperation(
@@ -201,6 +308,12 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
                 () -> baseDelegate.count(toPo(entity)));
     }
 
+    /**
+     * 判断是否存在（写操作路径，走 baseDelegate）
+     *
+     * @param entity 查询条件
+     * @return true 表示存在
+     */
     @Override
     public boolean exists(T entity) {
         return baseDelegate.exists(toPo(entity));
@@ -238,6 +351,16 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         R execute();
     }
 
+    /**
+     * PO → Entity 转换
+     * <p>
+     * 通过反射调用无参构造函数创建 Entity 实例，并使用 {@link BeanUtils#copyProperties}
+     * 复制同名属性。子类可重写以实现自定义映射逻辑。
+     *
+     * @param po 持久化对象，为 null 时返回 null
+     * @return 领域实体
+     * @throws RuntimeException 反射创建实例或属性复制失败时抛出
+     */
     protected T toEntity(P po) {
         if (po == null) {
             return null;
@@ -251,6 +374,16 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
         }
     }
 
+    /**
+     * Entity → PO 转换
+     * <p>
+     * 通过反射调用无参构造函数创建 PO 实例，并使用 {@link BeanUtils#copyProperties}
+     * 复制同名属性。子类可重写以实现自定义映射逻辑。
+     *
+     * @param entity 领域实体，为 null 时返回 null
+     * @return 持久化对象
+     * @throws RuntimeException 反射创建实例或属性复制失败时抛出
+     */
     protected P toPo(T entity) {
         if (entity == null) {
             return null;
