@@ -10,9 +10,9 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <name>structure-pro-starter</name>
-    <artifactId>structure-infra-starter</artifactId>
-    <description>mstructure-pro-starter</description>
+    <name>structure-pro-xxljob-starter</name>
+    <artifactId>structure-infra-xxljob-starter</artifactId>
+    <description>structure-pro-xxljob-starter</description>
     <packaging>jar</packaging>
 
     <dependencies>
@@ -22,24 +22,22 @@
         </dependency>
         <dependency>
             <groupId>cn.structured</groupId>
-            <artifactId>structure-datascope-starter</artifactId>
+            <artifactId>structure-infra-schedule-starter</artifactId>
         </dependency>
+
         <dependency>
-            <groupId>cn.structured</groupId>
-            <artifactId>structure-datascope-message</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-data-commons</artifactId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
+
         <dependency>
             <groupId>cn.structured</groupId>
-            <artifactId>structure-datascope-cache</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>cn.structured</groupId>
-            <artifactId>structure-infra-schedule-starter</artifactId>
-            <version>${revision}</version>
+            <artifactId>structure-job-starter</artifactId>
         </dependency>
     </dependencies>
 

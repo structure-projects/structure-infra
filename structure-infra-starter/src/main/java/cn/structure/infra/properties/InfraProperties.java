@@ -35,4 +35,9 @@ public class InfraProperties {
      * @return
      */
     private TimeUnit cacheTimeUnit = TimeUnit.SECONDS;
+
+    /**
+     * 调度线程池大小，默认 CPU 核心数
+     */
+    private Integer schedulePoolSize = Runtime.getRuntime().availableProcessors();
 }

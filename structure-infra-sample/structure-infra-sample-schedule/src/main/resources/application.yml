@@ -1,0 +1,11 @@
+server:
+  port: 8086
+
+logging:
+  level:
+    cn.structure.infra.schedule: DEBUG
+    cn.structure.infra.sample.schedule: INFO
+
+structure:
+  schedule:
+    pool-size: 4
