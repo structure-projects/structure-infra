@@ -4,7 +4,6 @@ import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
 import cn.structure.infra.lowcode.model.AutoFillType;
 import cn.structure.infra.lowcode.model.FieldSchema;
-import cn.structure.infra.lowcode.model.FieldType;
 import cn.structure.infra.lowcode.model.ResourceSchema;
 import cn.structure.infra.lowcode.repository.LowCodeStorage;
 import lombok.extern.slf4j.Slf4j;
@@ -18,11 +17,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * MongoDB 低代码仓储实现
@@ -100,15 +95,14 @@ public class MongoLowCodeStorage implements LowCodeStorage {
             // 主键、索引、唯一字段均需创建索引
             if (field.isPrimaryKey() || field.isIndex() || field.isUnique()) {
                 Index index = new Index()
-                        .on(field.getName(), field.isUnique() ? org.springframework.data.domain.Sort.Direction.ASC
-                                : org.springframework.data.domain.Sort.Direction.ASC);
+                        .on(field.getName(), Sort.Direction.ASC);
 
                 // 唯一字段追加 unique 约束
                 if (field.isUnique()) {
                     index.unique();
                 }
 
-                mongoTemplate.indexOps(collectionName).ensureIndex(index);
+                mongoTemplate.indexOps(collectionName).createIndex(index);
                 log.debug("Created index for field: {} (unique={}, index={})",
                         field.getName(), field.isUnique(), field.isIndex());
             }
@@ -279,8 +273,8 @@ public class MongoLowCodeStorage implements LowCodeStorage {
     @Override
     public ResPage<Map<String, Object>> queryPage(ReqPage reqPage) {
         // MongoTemplate 页码从 0 开始，业务页码从 1 开始，需减 1
-        int pageNum = reqPage.getPage() != null ? reqPage.getPage().intValue() - 1 : 0;
-        int pageSize = reqPage.getSize() != null ? reqPage.getSize().intValue() : 10;
+        int pageNum = reqPage.getPage() != null ? reqPage.getPage() - 1 : 0;
+        int pageSize = reqPage.getSize() != null ? reqPage.getSize() : 10;
 
         Query query = buildQuery(null);
         long total = mongoTemplate.count(query, schema.getTableName());
@@ -445,11 +439,7 @@ public class MongoLowCodeStorage implements LowCodeStorage {
             return null;
         }
         // Document 本身即 Map 派生，此处拷贝为独立 HashMap 以隔离 MongoDB 驱动类型
-        Map<String, Object> map = new HashMap<>();
-        for (Map.Entry<String, Object> entry : document.entrySet()) {
-            map.put(entry.getKey(), entry.getValue());
-        }
-        return map;
+        return new HashMap<>(document);
     }
 
     /**

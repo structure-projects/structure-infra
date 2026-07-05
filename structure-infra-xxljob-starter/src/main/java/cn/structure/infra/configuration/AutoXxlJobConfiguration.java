@@ -9,6 +9,7 @@ import cn.structure.job.rpc.XxlJobClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -37,6 +38,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @EnableConfigurationProperties(XxlJobProperties.class)
 @AutoConfigureBefore(cn.structure.infra.configuration.AutoScheduleConfiguration.class)
+@ConditionalOnProperty(prefix = "structure.schedule.xxl-job", name = "enabled", havingValue = "true")
 public class AutoXxlJobConfiguration {
 
     /**

@@ -201,7 +201,7 @@ public class MockMongoConfiguration {
 
         // indexOps
         IndexOperations indexOps = mock(IndexOperations.class);
-        when(indexOps.ensureIndex(any(Index.class))).thenReturn("");
+        when(indexOps.createIndex(any(Index.class))).thenReturn("");
         when(template.indexOps(anyString())).thenReturn(indexOps);
 
         // findOne with collectionName
