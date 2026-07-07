@@ -17,9 +17,11 @@ import java.util.concurrent.TimeUnit;
  * <p><b>设计意图：</b>使用不可变数据模型 + Builder 模式，统一封装不同调度语义
  * （CRON、固定频率、固定延迟）所需参数，调用方按需填充对应字段即可。</p>
  *
- * <p><b>CRON 限制说明：</b>本地 {@link LocalThreadTaskScheduler} 实现 CRON 调度时
- * 采用 1 秒级粒度的轮询策略（不支持秒级以下精度），即 CRON 表达式最小触发单位为秒。
- * 若需要更精细的调度请改用 {@link ScheduleType#FIXED_RATE} 或 {@link ScheduleType#FIXED_DELAY}。</p>
+ * <p><b>CRON 限制说明：</b>本地 {@link LocalThreadTaskScheduler} 通过 Spring
+ * {@code CronExpression} 解析 CRON 表达式，按下次触发时间精确调度。支持标准 6 字段
+ * cron 语义（秒 分 时 日 月 周），最小触发粒度为秒。day-of-month / day-of-week
+ * 字段可使用 {@code ?} 表示不指定。若需要更精细的调度请改用
+ * {@link ScheduleType#FIXED_RATE} 或 {@link ScheduleType#FIXED_DELAY}。</p>
  *
  * <p><b>字段使用约定：</b></p>
  * <ul>
@@ -66,7 +68,8 @@ public class ScheduleTask {
     /**
      * CRON 表达式，仅在 {@link #scheduleType} = {@link ScheduleType#CRON} 时使用。
      *
-     * <p>本地实现为秒级粒度轮询，不支持秒级以下精度。</p>
+     * <p>采用标准 6 字段格式（秒 分 时 日 月 周），由 Spring {@code CronExpression} 解析。
+     * 例如 {@code 0/5 * * * * ?} 表示每 5 秒，{@code 0 0 12 * * ?} 表示每天 12 点。</p>
      */
     private String cronExpression;
 
@@ -100,7 +103,7 @@ public class ScheduleTask {
      * 调度类型枚举。
      *
      * <ul>
-     *     <li>{@link #CRON}：基于 CRON 表达式（本地实现为秒级粒度轮询）</li>
+     *     <li>{@link #CRON}：基于 CRON 表达式（由 Spring CronExpression 解析，按下次触发时间精确调度）</li>
      *     <li>{@link #FIXED_DELAY}：固定延迟（上次执行结束后等待 delay 再触发下次）</li>
      *     <li>{@link #FIXED_RATE}：固定频率（按固定间隔触发，与上次执行耗时无关）</li>
      * </ul>

@@ -1,14 +1,20 @@
 package cn.structure.infra.schedule;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.support.CronExpression;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Delayed;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 基于 {@link ScheduledExecutorService} 的本地任务调度器默认实现。
@@ -24,8 +30,8 @@ import java.util.concurrent.TimeUnit;
  *     <li><b>错误隔离</b>：每个任务的执行都被 try-catch 包裹，单个任务的异常不会
  *         影响其他任务或导致调度线程死亡</li>
  *     <li><b>幂等调度</b>：{@link #schedule(ScheduleTask)} 在创建新任务前会先移除同 taskId 旧任务</li>
- *     <li><b>CRON 简化</b>：本地不解析 CRON 表达式，而是采用 1 秒级粒度的固定频率轮询，
- *         不支持秒级以下精度——这是出于实现简化的有意设计</li>
+ *     <li><b>CRON 精确调度</b>：基于 Spring {@link CronExpression} 解析 CRON 表达式，
+ *         通过递归一次性调度按下次触发时间精确触发，支持标准 6 字段 cron 语义（含 {@code ?} 字符）</li>
  * </ul>
  *
  * <p><b>协作关系：</b>依赖 {@link TaskHandlerRegistry} 完成 handler 查找；
@@ -126,7 +132,7 @@ public class LocalThreadTaskScheduler implements TaskScheduler {
                 break;
 
             case CRON:
-                // CRON 简化实现：不解析 CRON 表达式，统一以 1 秒粒度轮询触发（不支持秒级以下精度）
+                // 基于 Spring CronExpression 解析 cron 表达式，按下次触发时间递归调度
                 if (task.getCronExpression() == null || task.getCronExpression().isEmpty()) {
                     throw new IllegalArgumentException("Cron expression cannot be null for CRON schedule type");
                 }
@@ -194,31 +200,184 @@ public class LocalThreadTaskScheduler implements TaskScheduler {
     }
 
     /**
-     * CRON 任务的简化调度实现。
+     * CRON 任务的精确调度实现。
      *
-     * <p><b>CRON 简化说明：</b>本地实现并不解析 CRON 表达式，而是固定以 1 秒粒度
-     * 轮询触发任务。这意味着：</p>
-     * <ul>
-     *     <li>CRON 表达式最小触发单位为秒，不支持秒级以下精度</li>
-     *     <li>实际触发频率与 CRON 表达式可能不完全一致，仅作为"周期触发"使用</li>
-     *     <li>需要严格遵循 CRON 语义的场景请使用 XXL-Job 等专业调度器</li>
-     * </ul>
+     * <p><b>实现原理：</b>使用 Spring {@link CronExpression} 解析 cron 表达式，
+     * 采用"递归一次性调度"模式——每次执行完成后，根据 cron 表达式计算下次触发时间，
+     * 通过 {@link ScheduledExecutorService#schedule(Runnable, long, TimeUnit)} 安排下一次执行，
+     * 如此循环直至任务被取消。</p>
      *
-     * <p>同样使用 try-catch 包裹，避免任务异常导致调度线程死亡。</p>
+     * <p>相比固定频率轮询，该方式能严格遵循 cron 语义（如 {@code 0 0 12 * * ?} 每天 12 点触发），
+     * 不会出现"每秒都触发"的问题。支持标准 6 字段 cron 表达式（秒 分 时 日 月 周），
+     * day-of-month / day-of-week 字段可使用 {@code ?} 表示不指定。</p>
+     *
+     * <p>错误隔离由外层 {@link #wrapRunnable(ScheduleTask)} 保证，本方法仅负责调度编排。
+     * 即便 handler 抛出异常，finally 块仍会安排下次执行，确保周期性调度不中断。</p>
      *
      * @param task            任务描述对象
      * @param wrappedRunnable 已包装错误隔离的 Runnable
-     * @return 调度 future
+     * @return 可取消的调度 future，cancel 时会终止整个调度链
+     * @throws IllegalArgumentException 当 cron 表达式非法或不存在下次触发时间时抛出
      */
     private ScheduledFuture<?> scheduleCronTask(ScheduleTask task, Runnable wrappedRunnable) {
-        return executorService.scheduleAtFixedRate(() -> {
-            try {
-                wrappedRunnable.run();
-            } catch (Exception e) {
-                // 错误隔离：捕获任务异常仅记录日志，避免调度线程被杀死导致后续任务无法触发
-                log.error("Cron task execution failed: id={}, error={}", task.getTaskId(), e.getMessage(), e);
+        CronExpression cronExpression;
+        try {
+            cronExpression = CronExpression.parse(task.getCronExpression());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid cron expression: " + task.getCronExpression(), e);
+        }
+
+        // 取消标志：cancel 后阻止调度链继续递归
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        // 持有当前一次性调度的 future，便于取消整个调度链中的最近一次待触发任务
+        AtomicReference<ScheduledFuture<?>> currentFutureRef = new AtomicReference<>();
+
+        // 递归调度：每次执行完成后根据 cron 计算下次触发时间并安排一次性调度
+        Runnable cronRunnable = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    wrappedRunnable.run();
+                } finally {
+                    // handler 异常已被 wrapRunnable 隔离，这里仍确保调度下一次
+                    if (!cancelled.get()) {
+                        scheduleNext();
+                    }
+                }
             }
-        }, 0, 1000, TimeUnit.MILLISECONDS);  // 1 秒级粒度轮询
+
+            private void scheduleNext() {
+                if (cancelled.get()) {
+                    return;
+                }
+                long delayMs = computeNextDelayMs(cronExpression);
+                if (delayMs < 0) {
+                    // 没有下次触发时间，停止递归
+                    log.warn("Cron task has no next execution time, stopping: id={}, cron={}",
+                            task.getTaskId(), task.getCronExpression());
+                    return;
+                }
+                ScheduledFuture<?> nextFuture = executorService.schedule(this, delayMs, TimeUnit.MILLISECONDS);
+                currentFutureRef.set(nextFuture);
+                // 二次检查：防止在 schedule 与 cancel 并发时漏取消
+                if (cancelled.get()) {
+                    nextFuture.cancel(false);
+                }
+            }
+        };
+
+        // 计算首次触发时间
+        long initialDelayMs = computeNextDelayMs(cronExpression);
+        if (initialDelayMs < 0) {
+            throw new IllegalArgumentException(
+                    "Cron expression has no valid next execution time: " + task.getCronExpression());
+        }
+
+        ScheduledFuture<?> initialFuture = executorService.schedule(cronRunnable, initialDelayMs, TimeUnit.MILLISECONDS);
+        currentFutureRef.set(initialFuture);
+
+        log.info("Scheduled cron task: id={}, cron={}, firstFireIn={}ms",
+                task.getTaskId(), task.getCronExpression(), initialDelayMs);
+
+        return new CronScheduledFuture(cancelled, currentFutureRef);
+    }
+
+    /**
+     * 根据 cron 表达式计算从当前时刻到下次触发时刻的延迟（毫秒）。
+     *
+     * <p><b>边界处理（防止重复触发）：</b></p>
+     * <ul>
+     *     <li>确保返回的 next 严格晚于 now——若 {@link CronExpression#next} 在秒边界处
+     *         返回了不晚于 now 的时刻，则继续向后推进到下一个匹配点，避免零延迟重排</li>
+     *     <li>亚毫秒级延迟向上取整为 1ms，避免 {@code Duration.toMillis()} 截断为 0
+     *         导致任务立即重排、与上一次触发落在同一毫秒</li>
+     * </ul>
+     *
+     * @param cronExpression 已解析的 cron 表达式
+     * @return 下次触发的延迟毫秒数（≥1）；若无下次触发时间则返回 -1
+     */
+    private static long computeNextDelayMs(CronExpression cronExpression) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime next = cronExpression.next(now);
+        while (next != null && !next.isAfter(now)) {
+            next = cronExpression.next(next);
+        }
+        if (next == null) {
+            return -1L;
+        }
+        long delayMs = Duration.between(now, next).toMillis();
+        if (delayMs <= 0) {
+            delayMs = 1;
+        }
+        return delayMs;
+    }
+
+    /**
+     * CRON 调度链的 {@link ScheduledFuture} 包装器。
+     *
+     * <p>由于 CRON 任务采用递归一次性调度，底层 future 会随每次触发而更换。
+     * 本包装器持有取消标志与当前 future 的原子引用，cancel 时设置标志并取消
+     * 当前待触发的 future，从而终止整个调度链。</p>
+     */
+    private static final class CronScheduledFuture implements ScheduledFuture<Void> {
+
+        private final AtomicBoolean cancelled;
+        private final AtomicReference<ScheduledFuture<?>> currentFutureRef;
+
+        CronScheduledFuture(AtomicBoolean cancelled, AtomicReference<ScheduledFuture<?>> currentFutureRef) {
+            this.cancelled = cancelled;
+            this.currentFutureRef = currentFutureRef;
+        }
+
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            cancelled.set(true);
+            ScheduledFuture<?> current = currentFutureRef.get();
+            if (current != null) {
+                return current.cancel(mayInterruptIfRunning);
+            }
+            return true;
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled.get();
+        }
+
+        @Override
+        public boolean isDone() {
+            return cancelled.get();
+        }
+
+        @Override
+        public Void get() {
+            return null;
+        }
+
+        @Override
+        public Void get(long timeout, TimeUnit unit) {
+            return null;
+        }
+
+        @Override
+        public long getDelay(TimeUnit unit) {
+            ScheduledFuture<?> current = currentFutureRef.get();
+            return current != null ? current.getDelay(unit) : 0;
+        }
+
+        @Override
+        public int compareTo(Delayed o) {
+            if (o instanceof CronScheduledFuture) {
+                CronScheduledFuture other = (CronScheduledFuture) o;
+                ScheduledFuture<?> current = currentFutureRef.get();
+                ScheduledFuture<?> otherCurrent = other.currentFutureRef.get();
+                if (current != null && otherCurrent != null) {
+                    return current.compareTo(otherCurrent);
+                }
+            }
+            ScheduledFuture<?> current = currentFutureRef.get();
+            return current != null ? current.compareTo(o) : -1;
+        }
     }
 
     /**

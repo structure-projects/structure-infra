@@ -4,6 +4,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -205,6 +208,90 @@ class LocalThreadTaskSchedulerTest {
         assertTrue(counter.get() > countBeforeUpdate + 2, "Updated task should execute more frequently");
 
         scheduler.remove("test-update");
+        registry.unregister(handlerName);
+    }
+
+    @Test
+    void testScheduleCronTaskRespectsCronExpression() throws InterruptedException {
+        // 使用 0/2 * * * * ?（每 2 秒触发）验证 cron 表达式被真正解析，
+        // 而非旧实现那样固定每秒触发
+        List<Long> timestamps = Collections.synchronizedList(new ArrayList<>());
+        String handlerName = "cron-handler";
+        registry.register(handlerName, param -> timestamps.add(System.currentTimeMillis()));
+
+        ScheduleTask task = ScheduleTask.builder()
+                .taskId("test-cron")
+                .taskName("Cron Task")
+                .handlerName(handlerName)
+                .scheduleType(ScheduleTask.ScheduleType.CRON)
+                .cronExpression("0/2 * * * * ?")
+                .build();
+
+        scheduler.schedule(task);
+
+        // 等待 5 秒：cron 每 2 秒触发 → 预期 2~3 次；
+        // 若为旧实现（每秒触发）则会出现 5 次，从而被上界断言拦截
+        Thread.sleep(5000);
+
+        int count = timestamps.size();
+        assertTrue(count >= 2, "Cron task should execute at least 2 times, got: " + count);
+        assertTrue(count <= 4, "Cron task should respect 2-second interval (not every second), got: " + count);
+
+        // 校验前两次执行间隔接近 2 秒而非 1 秒
+        if (timestamps.size() >= 2) {
+            long interval = timestamps.get(1) - timestamps.get(0);
+            assertTrue(interval >= 1500, "Interval between cron fires should be ~2000ms, got: " + interval);
+        }
+
+        scheduler.remove("test-cron");
+        registry.unregister(handlerName);
+    }
+
+    @Test
+    void testScheduleCronTaskWithInvalidExpression() {
+        String handlerName = "invalid-cron-handler";
+        registry.register(handlerName, param -> {});
+
+        ScheduleTask task = ScheduleTask.builder()
+                .taskId("test-invalid-cron")
+                .taskName("Invalid Cron Task")
+                .handlerName(handlerName)
+                .scheduleType(ScheduleTask.ScheduleType.CRON)
+                .cronExpression("invalid cron expression")
+                .build();
+
+        assertThrows(IllegalArgumentException.class, () -> scheduler.schedule(task));
+        registry.unregister(handlerName);
+    }
+
+    @Test
+    void testCronTaskPauseStopsExecution() throws InterruptedException {
+        // 验证 CronScheduledFuture 的 cancel/pause 能终止整个递归调度链
+        AtomicInteger counter = new AtomicInteger(0);
+        String handlerName = "cron-pause-handler";
+        registry.register(handlerName, param -> counter.incrementAndGet());
+
+        ScheduleTask task = ScheduleTask.builder()
+                .taskId("test-cron-pause")
+                .taskName("Cron Pause Task")
+                .handlerName(handlerName)
+                .scheduleType(ScheduleTask.ScheduleType.CRON)
+                .cronExpression("0/1 * * * * ?")
+                .build();
+
+        scheduler.schedule(task);
+
+        Thread.sleep(2500);
+        int countBeforePause = counter.get();
+        assertTrue(countBeforePause >= 1, "Cron task should execute at least once before pause");
+
+        scheduler.pause("test-cron-pause");
+        assertEquals(ScheduleTask.TaskStatus.PAUSED, scheduler.getTaskInfo("test-cron-pause").getStatus());
+
+        Thread.sleep(2500);
+        assertEquals(countBeforePause, counter.get(), "Cron task should not execute after pause");
+
+        scheduler.remove("test-cron-pause");
         registry.unregister(handlerName);
     }
 

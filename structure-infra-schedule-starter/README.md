@@ -120,7 +120,7 @@ List<ScheduleTask> getAllTasks();
 - 通过 `Executors.newScheduledThreadPool(poolSize, threadFactory)` 创建调度器，线程为守护线程，命名为 `structure-schedule-<id>`
 - `schedule(task)` 校验 → 先 `remove(taskId)` 取消旧任务 → 包装 Runnable 通过注册表查找 handler → 按 `scheduleType` 派发
 - `FIXED_DELAY` / `FIXED_RATE` 默认间隔 1000ms
-- `CRON` 当前为简化实现，按 1000ms 间隔执行（cron 表达式仅存储不解析）
+- `CRON` 基于 Spring `CronExpression` 解析 6 字段 cron 表达式，按下次触发时间递归一次性调度，严格遵循 cron 语义
 - `update(task)` 等同于 `schedule(task)`（先取消再调度）
 - `pause(taskId)` 取消 future 但保留任务信息
 - `resume(taskId)` 仅当 `status == PAUSED` 时重新调度
@@ -270,7 +270,7 @@ public class JobManagerController {
 
 ## 注意事项
 
-- **CRON 表达式**：当前版本未接入 cron 解析器，CRON 类型任务固定按 1 秒间隔执行，`cronExpression` 仅存储不解析。如需严格 cron 调度，请使用 `structure-infra-xxljob-starter` 或自行集成 Spring `CronTrigger`
+- **CRON 表达式**：基于 Spring `CronExpression` 解析标准 6 字段 cron（秒 分 时 日 月 周），支持 `?` / `L` / `W` / `#` 等 Quartz 风格语法。采用递归一次性调度模式按下次触发时间精确触发。如需分布式调度，请使用 `structure-infra-xxljob-starter`
 - **状态持久化**：任务状态存储在内存中（`ConcurrentHashMap`），JVM 重启后丢失
 - **集群支持**：本模块为单机调度器，不支持分布式协调。如需分布式调度，请使用 `structure-infra-xxljob-starter`
 - **守护线程**：调度线程为守护线程，不会阻止 JVM 退出
