@@ -62,4 +62,21 @@
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <!-- UserPO 在 sample-core 中同时声明了 JPA / MyBatis-Plus / MongoDB / ES 注解,
+                         其中 JPA / MyBatis-Plus 注解依赖为 optional,不会传递到本模块。
+                         javac 读取 UserPO.class 时找不到对应枚举类会输出 classfile 告警,此处抑制。 -->
+                    <compilerArgs>
+                        <arg>-Xlint:none</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>

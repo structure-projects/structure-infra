@@ -1,0 +1,9 @@
+server:
+  port: 12001
+structure:
+  job:
+    enable: true
+    admin-address: http://localhost:8080
+    executor:
+      appname: xxl-job-executor-sample
+    access-token: xxl-job-admin-token

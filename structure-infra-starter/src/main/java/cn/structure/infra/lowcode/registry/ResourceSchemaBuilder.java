@@ -29,8 +29,10 @@ public class ResourceSchemaBuilder {
     public static ResourceSchema buildSchema(String resourceName, LowCodeProperties.SchemaProperties schemaProps) {
         ResourceSchema schema = new ResourceSchema();
         schema.setResourceName(resourceName);
+        // 表名未配置时默认使用资源名
         schema.setTableName(schemaProps.getTableName() != null ? schemaProps.getTableName() : resourceName);
 
+        // 逐字段构建 schema，addField 会自动识别主键并设置 idFieldName/idType
         if (schemaProps.getFields() != null) {
             for (var entry : schemaProps.getFields().entrySet()) {
                 String fieldName = entry.getKey();

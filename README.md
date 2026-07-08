@@ -1,62 +1,55 @@
 # structure-pro-infra
 
-基于 DDD（领域驱动设计）理念的基础设施抽象层，提供统一的仓储接口和多种持久化技术的适配实现。
+基于 DDD（领域驱动设计）理念的基础设施抽象层，提供统一的仓储接口、多种持久化技术适配、事件管理、任务调度与流式事件路由能力。
 
 ## 项目简介
 
-该项目实现了一个基于 **Facade + Delegate** 模式的仓储抽象层，作为领域层与持久化层之间的防腐层（ACL），核心目标是：
+该项目实现了一个基于 **Facade + Delegate** 模式的仓储抽象层，作为领域层与持久化层之间的防腐层（ACL），同时集成了事件发布、任务调度与流式事件路由等基础设施能力。核心目标是：
 
 - **解耦领域模型与持久化技术**：领域层只依赖统一的仓储接口，不关心底层使用哪种数据库
 - **支持多持久化技术**：通过委托模式自动适配 MyBatis Plus、JPA、MongoDB、Elasticsearch 等
 - **自动配置**：基于 Spring Boot AutoConfiguration 实现开箱即用
 - **Entity-PO 自动转换**：RepositoryFacade 自动完成领域实体与持久化对象的转换
-- **CQRS 读写分离**：支持一个仓储配置多个代理，写操作走基础代理，读操作走读代理
+- **CQRS 读写分离**：支持一个仓储配置多个代理，写操作走基础代理，读操作走读代理，读失败自动回退
 - **低代码仓储**：无需定义实体类，通过资源名称和 Map 动态操作数据，支持运行时动态注册
+- **事件管理**：统一的事件发布抽象，支持 Spring 事件与消息事件两种通道
+- **任务调度**：本地线程池调度与 XXL-Job 分布式调度两种实现，统一 TaskScheduler SPI
+- **流式事件路由**：基于 Spring Cloud Stream 的事件监听与统一路由能力
 
 ## 模块结构
 
 ```
 structure-pro-infra/
-├── structure-infra-starter/           # 核心模块
-│   ├── annotations/                   # 注解定义
-│   │   ├── Repository.java            # @Repository 注解
-│   │   └── DelegateFor.java           # @DelegateFor 注解
-│   ├── configuration/                 # 自动配置
-│   ├── repository/                    # 仓储核心接口
-│   │   ├── RepositoryFacade.java      # 仓储门面（对外）
-│   │   ├── RepositoryDelegate.java    # 仓储委托（对内）
-│   │   ├── RepositoryDelegateFactory.java # 委托工厂接口
-│   │   ├── RepositoryType.java        # 仓储类型枚举
-│   │   ├── DelegateType.java          # 委托类型枚举（BASE/READ）
-│   │   └── InMemoryRepositoryDelegate.java # 内存实现（开发/测试用）
-│   ├── lowcode/                       # 低代码仓储
-│   │   ├── repository/                # 低代码仓储接口
-│   │   │   ├── LowCodeRepository.java # 低代码统一仓储接口（用户侧）
-│   │   │   ├── LowCodeStorage.java    # 低代码存储接口（引擎侧）
-│   │   │   └── LowCodeRepoFactory.java # 低代码仓储工厂接口
-│   │   ├── router/                    # 路由引擎
-│   │   │   └── LowCodeRepositoryRouter.java # 低代码仓储路由器
-│   │   ├── model/                     # 模型定义
-│   │   │   ├── ResourceSchema.java    # 资源 schema
-│   │   │   ├── FieldSchema.java       # 字段 schema
-│   │   │   ├── StorageType.java       # 存储类型枚举
-│   │   │   ├── FieldType.java         # 字段类型枚举
-│   │   │   ├── AutoFillType.java      # 自动填充类型枚举
-│   │   │   └── RepositoryConfig.java  # 仓储配置
-│   │   └── registry/                  # 注册与构建
-│   │       └── ResourceSchemaBuilder.java # 资源 schema 构建器
-│   └── event/                         # 事件管理
-├── structure-infra-mybatis-plus-starter/ # MyBatis Plus 适配（含低代码实现）
-├── structure-infra-jpa-starter/        # JPA 适配
-├── structure-infra-mongodb-starter/    # MongoDB 适配（含低代码实现）
-├── structure-infra-elasticsearch-starter/ # Elasticsearch 适配（含低代码实现）
-└── structure-infra-sample/             # 示例模块
-    ├── structure-infra-sample-core/        # 共享核心（Entity、PO、Repository接口）
-    ├── structure-infra-sample-mybatis/     # MyBatis Plus 示例（含低代码测试）
-    ├── structure-infra-sample-jpa/         # JPA 示例
-    ├── structure-infra-sample-mongodb/     # MongoDB 示例（含低代码测试）
-    ├── structure-infra-sample-elasticsearch/ # Elasticsearch 示例（含低代码测试）
-    └── structure-infra-sample-cqrs/        # CQRS 读写分离示例
+├── structure-infra-starter/                # 核心模块（仓储抽象、低代码、事件管理、调度集成）
+│   ├── annotations/                        # @Repository / @DelegateFor 注解
+│   ├── configuration/                      # 自动配置（仓储、事件、调度）
+│   ├── event/                              # 事件管理抽象
+│   ├── lowcode/                            # 低代码仓储子系统
+│   │   ├── configuration/                  # 低代码自动配置
+│   │   ├── model/                          # ResourceSchema / FieldSchema 等模型
+│   │   ├── properties/                     # LowCodeProperties 配置绑定
+│   │   ├── registry/                       # ResourceSchemaBuilder
+│   │   ├── repository/                     # LowCodeRepository / LowCodeStorage / LowCodeRepoFactory
+│   │   └── router/                         # LowCodeRepositoryRouter
+│   ├── properties/                         # InfraProperties 全局配置
+│   └── repository/                         # 仓储核心接口（Facade / Delegate / Factory）
+├── structure-infra-mybatis-plus-starter/   # MyBatis Plus 适配（含低代码 MySQL 实现）
+├── structure-infra-jpa-starter/            # JPA 适配
+├── structure-infra-mongodb-starter/        # MongoDB 适配（含低代码实现）
+├── structure-infra-elasticsearch-starter/  # Elasticsearch 适配（含低代码实现）
+├── structure-infra-schedule-starter/       # 本地任务调度（基于 ScheduledExecutorService）
+├── structure-infra-xxljob-starter/         # XXL-Job 分布式任务调度适配
+├── structure-infra-stream-starter/         # Spring Cloud Stream 事件路由
+└── structure-infra-sample/                 # 示例模块（不发布到中央仓库）
+    ├── structure-infra-sample-core/             # 共享核心（Entity、PO、Repository 接口）
+    ├── structure-infra-sample-mybatis/          # MyBatis Plus 示例（含低代码测试）
+    ├── structure-infra-sample-jpa/              # JPA 示例
+    ├── structure-infra-sample-mongodb/          # MongoDB 示例（含 REST API、低代码测试）
+    ├── structure-infra-sample-elasticsearch/    # Elasticsearch 示例（含 REST API、低代码测试）
+    ├── structure-infra-sample-cqrs/             # CQRS 读写分离示例
+    ├── structure-infra-sample-schedule/         # 本地调度示例（含 REST API）
+    ├── structure-infra-sample-xxljob/           # XXL-Job 调度示例（含 REST API）
+    └── structure-infra-sample-stream/           # 流式事件路由示例
 ```
 
 ## 核心概念
@@ -75,7 +68,7 @@ structure-pro-infra/
 仓储委托，是持久化层的实现接口，负责：
 
 - 直接操作 PO（持久化对象）
-- 与具体的持久化技术交互（MyBatis Plus、JPA、MongoDB 等）
+- 与具体的持久化技术交互（MyBatis Plus、JPA、MongoDB、Elasticsearch 等）
 - 不同持久化技术提供各自的实现
 
 ### RepositoryDelegateFactory
@@ -143,6 +136,36 @@ structure-pro-infra/
 | `REDIS` | - | 规划中 |
 | `IN_MEMORY` | - | 规划中（测试用） |
 
+### 事件管理
+
+提供统一的事件发布抽象，支持三种事件通道：
+
+| 通道 | 说明 |
+|------|------|
+| `DEFAULT` | 默认通道，运行时通过 `structure.infra.default-event-channel` 决定路由 |
+| `SPRING_EVENT` | Spring 应用事件，通过 `ApplicationEventPublisher` 同步发布 |
+| `MESSAGE_EVENT` | 消息事件，通过 `DataScopeStreamBridge` 发送到消息中间件 |
+
+### 任务调度
+
+提供两种调度实现，通过 `TaskScheduler` SPI 统一抽象：
+
+| 实现 | 模块 | 适用场景 |
+|------|------|---------|
+| 本地线程池调度 | structure-infra-schedule-starter | 单机应用，无需外部依赖 |
+| XXL-Job 分布式调度 | structure-infra-xxljob-starter | 分布式应用，需要集中管理 |
+
+支持三种调度类型：`CRON`、`FIXED_DELAY`、`FIXED_RATE`，并提供统一的 `schedule / update / remove / pause / resume / getTaskInfo / getAllTasks` 生命周期 API。
+
+### 流式事件路由
+
+基于 Spring Cloud Stream 的事件监听与统一路由框架，提供：
+
+- 动态 Binding 配置（替代静态配置）
+- 基于 `eventType / businessType / condition` 的统一路由
+- 注解声明式、代码动态注册、配置文件驱动、运行时动态注册四种使用方式
+- SpEL 条件表达式过滤
+
 ## 快速开始
 
 ### 示例模块
@@ -159,7 +182,12 @@ mvn spring-boot:run -pl structure-infra-sample/structure-infra-sample-mongodb
 mvn spring-boot:run -pl structure-infra-sample/structure-infra-sample-elasticsearch
 ```
 
-**REST API 接口**（两个示例模块接口一致）：
+**调度示例**（端口 8086）：
+```bash
+mvn spring-boot:run -pl structure-infra-sample/structure-infra-sample-schedule
+```
+
+**REST API 接口**（MongoDB / Elasticsearch 示例模块接口一致）：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -171,6 +199,18 @@ mvn spring-boot:run -pl structure-infra-sample/structure-infra-sample-elasticsea
 | DELETE | `/api/users/{id}` | 删除用户 |
 | POST | `/api/users/batch` | 批量创建 |
 | GET | `/api/users/count` | 查询总数 |
+
+**调度示例 REST API**：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/job/add` | 添加任务（CRON） |
+| PUT | `/job/update/{taskId}` | 更新任务 |
+| DELETE | `/job/remove/{taskId}` | 删除任务 |
+| PUT | `/job/pause/{taskId}` | 暂停任务 |
+| PUT | `/job/resume/{taskId}` | 恢复任务 |
+| GET | `/job/info/{taskId}` | 查询任务详情 |
+| GET | `/job/list` | 查询所有任务 |
 
 详细示例模块说明请参考 [SAMPLE_MODULES.md](./SAMPLE_MODULES.md)。
 
@@ -211,6 +251,27 @@ mvn spring-boot:run -pl structure-infra-sample/structure-infra-sample-elasticsea
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-elasticsearch-starter</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+
+<!-- 本地任务调度 -->
+<dependency>
+    <groupId>cn.structured</groupId>
+    <artifactId>structure-infra-schedule-starter</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+
+<!-- XXL-Job 分布式任务调度 -->
+<dependency>
+    <groupId>cn.structured</groupId>
+    <artifactId>structure-infra-xxljob-starter</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+
+<!-- 流式事件路由 -->
+<dependency>
+    <groupId>cn.structured</groupId>
+    <artifactId>structure-infra-stream-starter</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
@@ -325,85 +386,151 @@ public class UserReadDelegate extends ElasticsearchRepositoryDelegate<UserPO, Lo
 
 低代码仓储无需定义实体类，通过资源名称和 Map 操作数据。
 
-**1) 定义资源 Schema**
+**1) 通过 YAML 定义资源 Schema**
 
-```java
-ResourceSchema schema = ResourceSchema.builder()
-    .resourceName("article")
-    .tableName("t_lowcode_article")
-    .build();
-
-schema.addField(FieldSchema.builder()
-    .name("id")
-    .type(FieldType.LONG)
-    .primaryKey(true)
-    .build());
-
-schema.addField(FieldSchema.builder()
-    .name("title")
-    .type(FieldType.STRING)
-    .length(200)
-    .nullable(false)
-    .build());
-
-schema.addField(FieldSchema.builder()
-    .name("author")
-    .type(FieldType.STRING)
-    .index(true)
-    .build());
-
-schema.addField(FieldSchema.builder()
-    .name("created_at")
-    .type(FieldType.DATETIME)
-    .autoFill(AutoFillType.CREATE)
-    .build());
+```yaml
+structure:
+  infra:
+    lowcode:
+      enabled: true
+      resources:
+        article:
+          schema:
+            table-name: t_lowcode_article
+            id-type: long
+            fields:
+              id:
+                type: long
+                primary-key: true
+                auto-increment: true
+              title:
+                type: string
+                length: 200
+                nullable: false
+              author:
+                type: string
+                length: 50
+                index: true
+              created_at:
+                type: datetime
+                auto-fill: create
+              updated_at:
+                type: datetime
+                auto-fill: create_update
+          repository:
+            type: mysql
 ```
 
-**2) 注册资源并使用**
+**2) 通过代码注册并使用**
 
 ```java
 @Autowired
-private LowCodeRepositoryRouter lowCodeRepositoryRouter;
-
-// 注册资源（通常在启动时或配置中完成）
-RepositoryConfig config = new RepositoryConfig();
-config.setType(StorageType.MONGODB);
-lowCodeRepositoryRouter.registerResource("article", schema, config);
+private LowCodeRepository lowCodeRepository;
 
 // 保存数据
 Map<String, Object> article = new HashMap<>();
 article.put("title", "Hello World");
 article.put("author", "zhangsan");
-Map<String, Object> saved = lowCodeRepositoryRouter.save("article", article);
+Map<String, Object> saved = lowCodeRepository.save("article", article);
 
 // 查询数据
-Map<String, Object> found = lowCodeRepositoryRouter.findById("article", 1L);
+Map<String, Object> found = lowCodeRepository.findById("article", 1L);
 
 // 条件查询
 Map<String, Object> params = new HashMap<>();
 params.put("author", "zhangsan");
-List<Map<String, Object>> list = lowCodeRepositoryRouter.queryList("article", params);
+List<Map<String, Object>> list = lowCodeRepository.queryList("article", params);
 
 // 分页查询
 ReqPage reqPage = new ReqPage();
 reqPage.setPage(1);
 reqPage.setSize(10);
-ResPage<Map<String, Object>> page = lowCodeRepositoryRouter.queryPage("article", reqPage);
+ResPage<Map<String, Object>> page = lowCodeRepository.queryPage("article", reqPage);
 ```
 
 **3) 切换存储引擎**
 
-只需修改 `RepositoryConfig` 的 `type` 即可切换存储引擎，业务代码无需修改：
+只需修改 `repository.type` 即可切换存储引擎，业务代码无需修改：
+
+```yaml
+# 使用 MySQL
+repository:
+  type: mysql
+
+# 使用 MongoDB
+repository:
+  type: mongodb
+
+# 使用 Elasticsearch
+repository:
+  type: elasticsearch
+```
+
+### 7. 任务调度使用
+
+**1) 注册任务处理器**
 
 ```java
-// 使用 MySQL
-config.setType(StorageType.MYSQL);
+@Component
+public class MyTaskHandlers {
 
-// 使用 MongoDB
-config.setType(StorageType.MONGODB);
+    @Autowired
+    private TaskHandlerRegistry handlerRegistry;
 
-// 使用 Elasticsearch
-config.setType(StorageType.ELASTICSEARCH);
+    @PostConstruct
+    public void register() {
+        handlerRegistry.register("myHandler", this::handleTask);
+    }
+
+    public void handleTask(String param) {
+        System.out.println("任务执行，参数：" + param);
+    }
+}
+```
+
+**2) 调度任务**
+
+```java
+@Autowired
+private TaskScheduler taskScheduler;
+
+ScheduleTask task = ScheduleTask.builder()
+        .taskId("my-task-001")
+        .taskName("我的定时任务")
+        .handlerName("myHandler")
+        .handlerParam("hello")
+        .scheduleType(ScheduleTask.ScheduleType.CRON)
+        .cronExpression("0/10 * * * * ?")
+        .build();
+
+taskScheduler.schedule(task);
+taskScheduler.pause("my-task-001");
+taskScheduler.resume("my-task-001");
+taskScheduler.remove("my-task-001");
+```
+
+### 8. 事件发布
+
+```java
+public class UserCreatedEvent implements Event {
+    private final String eventId = UUID.randomUUID().toString();
+
+    @Override
+    public String getEventId() {
+        return eventId;
+    }
+    // 默认走 DEFAULT 通道，由 structure.infra.default-event-channel 决定路由
+}
+
+@Component
+@RequiredArgsConstructor
+public class UserEventPublisher {
+    private final EventManager eventManager;
+
+    public void publishCreated() {
+        eventManager.publish(new UserCreatedEvent());
+    }
+}
 ```
 
 ## 注解说明
@@ -424,6 +551,7 @@ config.setType(StorageType.ELASTICSEARCH);
 | `cacheTime` | long | 60 | 缓存时间 |
 | `cacheTimeUnit` | TimeUnit | SECONDS | 缓存时间单位 |
 | `cqrs` | boolean | false | 是否启用 CQRS 读写分离 |
+| `readDelegateClass` | Class | Object.class | 读代理类（CQRS 模式下使用） |
 
 ### @DelegateFor
 
@@ -440,13 +568,84 @@ config.setType(StorageType.ELASTICSEARCH);
 
 ## 配置项
 
+### 全局配置
+
 ```yaml
 structure:
   infra:
     default-event-channel: SPRING_EVENT  # 默认事件通道：DEFAULT, SPRING_EVENT, MESSAGE_EVENT
-    cqrs: false                           # 是否开启 CQRS
+    cqrs: false                           # 是否开启 CQRS（仅作建议，以 @Repository 注解为准）
     cache-time: 60                        # 默认缓存时间
     cache-time-unit: SECONDS              # 默认缓存时间单位
+    schedule-pool-size: 8                 # 调度线程池大小（默认 CPU 核心数）
+    type: MYBATIS_PLUS                    # 默认持久化类型
+```
+
+### 调度配置
+
+```yaml
+structure:
+  schedule:
+    pool-size: 4                          # 本地调度线程池大小
+    xxl-job:
+      enabled: true                       # 是否启用 XXL-Job
+      job-group: 1                        # XXL-Job 执行器分组 ID
+```
+
+### 低代码配置
+
+```yaml
+structure:
+  infra:
+    lowcode:
+      enabled: true                       # 是否启用低代码仓储
+      resources:
+        <resource-name>:
+          schema:
+            table-name: <table>
+            id-type: long
+            fields:
+              <field-name>:
+                type: string|long|int|boolean|decimal|datetime|date|text|json
+                length: 64
+                primary-key: true|false
+                auto-increment: true|false
+                nullable: true|false
+                unique: true|false
+                index: true|false
+                default-value: <literal>
+                auto-fill: none|create|update|create_update
+          repository:
+            type: mysql|mongodb|elasticsearch|redis|in_memory
+            datasource: <datasource-name>
+            cqrs:
+              enabled: true|false
+              read-type: elasticsearch
+              read-datasource: es-default
+            cache:
+              enabled: true|false
+              ttl: 300
+              time-unit: seconds
+```
+
+### 流式事件配置
+
+```yaml
+structure:
+  infra:
+    stream:
+      enabled: true                       # 是否启用
+      auto-binding: true                  # 自动生成 binding 配置
+      default-group: my-service           # 默认消费组
+      default-concurrency: 1              # 默认并发数
+      router:
+        enabled: true                     # 是否启用配置驱动路由
+        routes:                           # 路由列表
+          - id: route-001
+            event-type: orderCreated
+            payload-type: com.example.OrderEvent
+            handler-bean: orderHandler
+            handler-method: onOrderCreated
 ```
 
 ## 扩展指南
@@ -476,6 +675,13 @@ public class UserMybatisPlusDelegate extends MybatisPlusRepositoryDelegate<UserP
 4. 创建 `XXXAutoConfiguration` 自动配置类
 5. 在 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 中注册配置类
 
+### 新增低代码存储引擎
+
+1. 实现 `LowCodeStorage` 接口（包含 `initialize()` 建表/集合/索引逻辑）
+2. 实现 `LowCodeRepoFactory` 接口，`getType()` 返回新的 `StorageType`
+3. 创建 `XXXLowCodeAutoConfiguration` 自动配置类，注册 `LowCodeRepoFactory` Bean
+4. 在 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 中注册配置类
+
 ## 委托匹配策略
 
 `RepositoryBeanPostProcessor` 在应用启动时自动匹配 delegate 到 facade。
@@ -495,31 +701,16 @@ public class UserMybatisPlusDelegate extends MybatisPlusRepositoryDelegate<UserP
 
 与 BASE 代理匹配策略相同，但只匹配 `delegateType = READ` 的委托。如果未找到 READ 代理，读操作会回退到使用 BASE 代理。
 
-## 事件管理
-
-项目提供事件发布能力：
-
-```java
-public interface Event {
-    String getEventId();
-    default EventChannel getEventChannel() {
-        return EventChannel.DEFAULT;
-    }
-}
-
-public interface EventManager {
-    void publish(Event event);
-}
-```
-
 ## 技术栈
 
-- Java 21+
+- Java 17+
 - Spring Boot 4.0.6
 - Spring Data JPA 3.3+
 - MyBatis Plus 3.5.16
 - Spring Data MongoDB
 - Spring Data Elasticsearch
+- Spring Cloud Stream 5.0.0
+- XXL-Job Core
 
 ## License
 

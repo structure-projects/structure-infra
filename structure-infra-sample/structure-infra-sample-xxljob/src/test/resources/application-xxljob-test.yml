@@ -1,0 +1,15 @@
+structure:
+  schedule:
+    xxl-job:
+      enabled: true
+      admin-address: http://localhost:8080/xxl-job-admin
+      access-token: default_token
+      job-group: 1
+      executor-app-name: structure-infra-sample-xxljob
+      executor-port: 9999
+      executor-log-path: /data/applogs/xxl-job/jobhandler
+      executor-log-retention-days: 30
+
+spring:
+  application:
+    name: structure-infra-sample-xxljob

@@ -31,16 +31,35 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
     private final Class<T> entityClass;
     private final String idFieldName;
 
+    /**
+     * 构造内存仓储委托，默认主键字段名为 "id"
+     *
+     * @param entityClass 实体类型
+     */
     public InMemoryRepositoryDelegate(Class<T> entityClass) {
         this(entityClass, "id");
     }
 
+    /**
+     * 构造内存仓储委托，指定主键字段名
+     *
+     * @param entityClass  实体类型
+     * @param idFieldName  主键字段名
+     */
     public InMemoryRepositoryDelegate(Class<T> entityClass, String idFieldName) {
         this.entityClass = entityClass;
         this.idFieldName = idFieldName;
         log.info("InMemoryRepositoryDelegate initialized for entity: {}", entityClass.getSimpleName());
     }
 
+    /**
+     * 保存实体（新增或更新）
+     * <p>
+     * 主键为 null 时自动生成；否则按主键覆盖更新。
+     *
+     * @param entity 实体对象
+     * @return 保存后的实体
+     */
     @Override
     public T save(T entity) {
         if (entity == null) {
@@ -48,6 +67,7 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
         }
         ID id = getIdValue(entity);
         if (id == null) {
+            // 主键为空，自动生成新 ID 并回填
             id = generateId();
             setIdValue(entity, id);
         }
@@ -56,6 +76,11 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
         return entity;
     }
 
+    /**
+     * 根据主键删除
+     *
+     * @param id 主键
+     */
     @Override
     public void removeById(ID id) {
         if (id != null) {
@@ -64,6 +89,12 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
         }
     }
 
+    /**
+     * 根据主键查询
+     *
+     * @param id 主键
+     * @return 实体对象，不存在时返回 null
+     */
     @Override
     public T findById(ID id) {
         if (id == null) {
@@ -74,16 +105,34 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
         return entity;
     }
 
+    /**
+     * 根据主键查询（读操作路径）
+     *
+     * @param id 主键
+     * @return 实体对象，不存在时返回 null
+     */
     @Override
     public T queryById(ID id) {
         return findById(id);
     }
 
+    /**
+     * 根据主键查询（Optional 包装）
+     *
+     * @param id 主键
+     * @return Optional 包装的实体
+     */
     @Override
     public Optional<T> queryByIdOptional(ID id) {
         return Optional.ofNullable(queryById(id));
     }
 
+    /**
+     * 条件查询单条记录
+     *
+     * @param condition 查询条件（非空字段作为等值条件）
+     * @return 单条实体，不存在时返回 null
+     */
     @Override
     public T queryOne(T condition) {
         if (condition == null) {
@@ -93,11 +142,23 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
         return results.isEmpty() ? null : results.get(0);
     }
 
+    /**
+     * 条件查询单条记录（Optional 包装）
+     *
+     * @param condition 查询条件
+     * @return Optional 包装的实体
+     */
     @Override
     public Optional<T> queryOneOptional(T condition) {
         return Optional.ofNullable(queryOne(condition));
     }
 
+    /**
+     * 条件查询列表
+     *
+     * @param condition 查询条件，为 null 时返回全部
+     * @return 实体列表
+     */
     @Override
     public List<T> queryList(T condition) {
         if (condition == null) {
@@ -108,6 +169,14 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 分页查询
+     * <p>
+     * 基于内存列表切片实现，pageNum/pageSize 为空时使用默认值 1/10。
+     *
+     * @param reqPage 分页参数
+     * @return 分页结果
+     */
     @Override
     public ResPage<T> queryPage(ReqPage reqPage) {
         ResPage<T> page = new ResPage<>();
@@ -116,6 +185,7 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
         int pageNum = reqPage.getPage() != null ? reqPage.getPage() : 1;
         int pageSize = reqPage.getSize() != null ? reqPage.getSize() : 10;
 
+        // 计算总页数和切片起止索引
         long pages = total > 0 ? (total + pageSize - 1) / pageSize : 0;
         int fromIndex = (pageNum - 1) * pageSize;
         int toIndex = Math.min(fromIndex + pageSize, allValues.size());
@@ -235,6 +305,12 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
         idGenerator.set(1);
     }
 
+    /**
+     * 批量保存
+     *
+     * @param entities 实体列表
+     * @return 保存后的实体列表
+     */
     @Override
     public List<T> saveBatch(List<T> entities) {
         if (entities == null || entities.isEmpty()) {
@@ -245,6 +321,11 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 根据主键批量删除
+     *
+     * @param ids 主键列表
+     */
     @Override
     public void removeBatchByIds(List<ID> ids) {
         if (ids != null) {
@@ -252,6 +333,12 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
         }
     }
 
+    /**
+     * 根据主键列表批量查询
+     *
+     * @param ids 主键列表
+     * @return 实体列表（过滤掉不存在的）
+     */
     @Override
     public List<T> listByIds(List<ID> ids) {
         if (ids == null || ids.isEmpty()) {
@@ -263,6 +350,12 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 统计数量
+     *
+     * @param condition 查询条件，为 null 时统计全部
+     * @return 记录数量
+     */
     @Override
     public long count(T condition) {
         if (condition == null) {
@@ -273,6 +366,12 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
                 .count();
     }
 
+    /**
+     * 判断是否存在
+     *
+     * @param condition 查询条件
+     * @return true 表示存在
+     */
     @Override
     public boolean exists(T condition) {
         return count(condition) > 0;

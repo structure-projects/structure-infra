@@ -117,15 +117,23 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         }
     }
 
+    /**
+     * 初始化存储结构：根据 schema 自动执行建表 DDL。
+     * <p>
+     * 通过 JDBC Statement 直接执行方言相关的 CREATE TABLE 语句；若表已存在则忽略异常，
+     * 仅打印告警日志，保证幂等。
+     */
     @Override
     public void initialize() {
         String tableName = schema.getTableName();
         try (SqlSession session = sqlSessionFactory.openSession()) {
             Connection con = session.getConnection();
             try (Statement stmt = con.createStatement()) {
+                // 直接执行自动生成的建表 DDL（含主键、唯一约束、索引）
                 stmt.execute(buildCreateTableSql());
                 log.info("LowCode table initialized: {}", tableName);
             } catch (SQLException e) {
+                // 表已存在或其他 DDL 异常均视为幂等成功，仅告警
                 log.warn("Failed to initialize table {} (may already exist): {}", tableName, e.getMessage());
             }
         }
@@ -176,11 +184,14 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
 
         sql.append(String.join(", ", columnDefs));
 
+        // 主键约束：所有方言通用
         if (!pkFields.isEmpty()) {
             sql.append(", PRIMARY KEY (").append(String.join(", ", pkFields)).append(")");
         }
 
+        // 索引与唯一约束按方言适配：MySQL 在建表语句内联声明；其他方言之索引需单独 CREATE INDEX
         if (dialect == DatabaseDialect.MYSQL) {
+            // MySQL：UNIQUE KEY / KEY 内联到 CREATE TABLE
             for (String uk : uniqueFields) {
                 sql.append(", UNIQUE KEY uk_").append(uk).append(" (").append(uk).append(")");
             }
@@ -189,10 +200,12 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
             }
             sql.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         } else {
+            // 非 MySQL：唯一约束用 CONSTRAINT 内联，索引需用单独的 CREATE INDEX 语句
             for (String uk : uniqueFields) {
                 sql.append(", CONSTRAINT uk_").append(uk).append(" UNIQUE (").append(uk).append(")");
             }
             for (String idx : indexFields) {
+                // 拼接独立的 CREATE INDEX 语句（与建表语句以分号分隔）
                 sql.append("); ");
                 sql.append("CREATE INDEX IF NOT EXISTS idx_").append(idx)
                         .append(" ON ").append(schema.getTableName()).append(" (").append(idx).append(")");
@@ -212,15 +225,19 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
      */
     private String mapFieldType(FieldSchema field) {
         FieldType type = field.getType();
+        // 按方言适配：BOOLEAN/DATETIME/JSON 在 MySQL 与其他方言间存在差异
         return switch (type) {
             case STRING -> "VARCHAR(" + field.getLength() + ")";
             case LONG -> "BIGINT";
             case INTEGER -> "INT";
+            // MySQL 用 TINYINT(1) 表示布尔，H2/PG 等使用原生 BOOLEAN
             case BOOLEAN -> dialect == DatabaseDialect.MYSQL ? "TINYINT(1)" : "BOOLEAN";
             case DECIMAL -> "DECIMAL(" + field.getPrecision() + "," + field.getScale() + ")";
+            // MySQL 用 DATETIME，其他方言用 TIMESTAMP
             case DATETIME -> dialect == DatabaseDialect.MYSQL ? "DATETIME" : "TIMESTAMP";
             case DATE -> "DATE";
             case TEXT -> "TEXT";
+            // MySQL 原生 JSON 类型，其他方言退化为 TEXT
             case JSON -> dialect == DatabaseDialect.MYSQL ? "JSON" : "TEXT";
             default -> "VARCHAR(255)";
         };
@@ -449,16 +466,33 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         return null;
     }
 
+    /**
+     * 保存或更新一条记录（以 Map 形式）。
+     * <p>
+     * 处理流程：
+     * <ol>
+     *   <li>拷贝入参，避免污染调用方 Map</li>
+     *   <li>按 {@link AutoFillType#CREATE} 与 {@link AutoFillType#CREATE_UPDATE} 自动填充时间字段</li>
+     *   <li>根据主键是否存在且库里已有同 ID 记录，决定走 doUpdate 或 doInsert</li>
+     * </ol>
+     *
+     * @param data 数据 Map，键为字段名、值为字段值
+     * @return 保存后的完整数据（含自动生成的主键、自动填充字段）
+     */
     @Override
     public Map<String, Object> save(Map<String, Object> data) {
+        // 拷贝一份，避免污染调用方传入的 Map
         Map<String, Object> rowData = new LinkedHashMap<>(data);
+        // 创建场景填充：CREATE_TIME 等
         fillAutoFields(rowData, AutoFillType.CREATE);
+        // 创建/更新双重填充：CREATE_UPDATE 字段
         fillAutoFields(rowData, AutoFillType.CREATE_UPDATE);
 
         String idField = schema.getIdFieldName();
         boolean hasId = rowData.containsKey(idField) && rowData.get(idField) != null;
 
         if (hasId) {
+            // 已带主键时先查库，存在则更新、不存在则插入
             Map<String, Object> existing = findById(rowData.get(idField));
             if (existing != null) {
                 return doUpdate(rowData);
@@ -511,11 +545,13 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
 
         FieldSchema idField = schema.getIdField();
         if (idField != null && idField.isAutoIncrement()) {
+            // 自增主键场景：走 JDBC 原生 PreparedStatement 以获取 RETURN_GENERATED_KEYS（不经过拦截器）
             Object key = executeInsertWithGeneratedKey(jdbcSql, jdbcParamList);
             if (key != null) {
                 data.put(idField.getName(), key);
             }
         } else {
+            // 非自增主键场景：走 MyBatis SqlSession，SQL 经过拦截器链
             executeUpdate(mybatisSql, namedParams, SqlCommandType.INSERT);
         }
 
@@ -536,16 +572,19 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         Map<String, Object> params = new HashMap<>();
         String idFieldName = schema.getIdFieldName();
 
+        // 更新场景填充：UPDATE_TIME 等（覆盖旧值由调用方决定，此处 putIfAbsent 仅在未显式设置时填充）
         fillAutoFields(data, AutoFillType.UPDATE);
         fillAutoFields(data, AutoFillType.CREATE_UPDATE);
 
         boolean first = true;
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             String fieldName = entry.getKey();
+            // 主键字段不进入 SET 子句，仅作为 WHERE 条件
             if (fieldName.equals(idFieldName)) {
                 params.put(fieldName, entry.getValue());
                 continue;
             }
+            // schema 外字段忽略，避免无效列
             if (schema.getField(fieldName) == null) {
                 continue;
             }
@@ -564,6 +603,13 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         return findById(data.get(idFieldName));
     }
 
+    /**
+     * 根据主键删除记录。
+     * <p>
+     * 通过动态 MappedStatement 执行 DELETE，SQL 经过 MyBatis 拦截器链。
+     *
+     * @param id 主键值
+     */
     @Override
     public void removeById(Object id) {
         String idFieldName = schema.getIdFieldName();
@@ -573,6 +619,14 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         executeUpdate(sql, params, SqlCommandType.DELETE);
     }
 
+    /**
+     * 根据主键查询单条记录。
+     * <p>
+     * 使用 schema 中明确列名替代 SELECT *，结果以 Map 形式返回。
+     *
+     * @param id 主键值
+     * @return 数据 Map，未找到时返回 null
+     */
     @Override
     public Map<String, Object> findById(Object id) {
         String idFieldName = schema.getIdFieldName();
@@ -584,22 +638,48 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         return results.isEmpty() ? null : results.get(0);
     }
 
+    /**
+     * 根据主键查询（与 findById 等价，语义上用于"读模型"）。
+     *
+     * @param id 主键值
+     * @return 数据 Map，未找到时返回 null
+     */
     @Override
     public Map<String, Object> queryById(Object id) {
         return findById(id);
     }
 
+    /**
+     * 根据条件查询单条记录，取结果集首条。
+     *
+     * @param queryParams 查询条件 Map，键为字段名、值为等值匹配值
+     * @return 首条匹配记录，无匹配时返回 null
+     */
     @Override
     public Map<String, Object> queryOne(Map<String, Object> queryParams) {
         List<Map<String, Object>> list = queryList(queryParams);
         return list.isEmpty() ? null : list.get(0);
     }
 
+    /**
+     * 根据条件查询单条记录，并以 {@link Optional} 包装返回。
+     *
+     * @param queryParams 查询条件 Map
+     * @return 包含首条匹配记录的 Optional
+     */
     @Override
     public Optional<Map<String, Object>> queryOneOptional(Map<String, Object> queryParams) {
         return Optional.ofNullable(queryOne(queryParams));
     }
 
+    /**
+     * 根据条件等值匹配查询列表。
+     * <p>
+     * 仅 schema 中存在的字段才会进入 WHERE 子句，使用 AND 连接的等值条件。
+     *
+     * @param queryParams 查询条件 Map，为 null 或空时等价于全表查询
+     * @return 匹配记录列表，无匹配时返回空列表
+     */
     @Override
     public List<Map<String, Object>> queryList(Map<String, Object> queryParams) {
         StringBuilder sql = new StringBuilder();
@@ -607,6 +687,7 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         Map<String, Object> params = new HashMap<>();
 
         if (queryParams != null && !queryParams.isEmpty()) {
+            // 动态拼接 WHERE 子句：仅 schema 内字段参与，AND 连接等值条件
             StringBuilder where = new StringBuilder(" WHERE ");
             boolean first = true;
             for (Map.Entry<String, Object> entry : queryParams.entrySet()) {
@@ -629,8 +710,18 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         return executeSelect(sql.toString(), params);
     }
 
+    /**
+     * 分页查询。
+     * <p>
+     * 先 COUNT 总数，再按方言生成分页 SQL 取当前页记录。
+     * total 为 0 时直接返回空记录，避免无意义查询。
+     *
+     * @param reqPage 分页请求（页码、每页大小，为 null 时取默认 1/10）
+     * @return 分页结果，含当前页、总页数、总条数、当前页记录
+     */
     @Override
     public ResPage<Map<String, Object>> queryPage(ReqPage reqPage) {
+        // 页码与每页大小兜底
         long pageNum = reqPage.getPage() != null ? reqPage.getPage() : 1;
         long pageSize = reqPage.getSize() != null ? reqPage.getSize() : 10;
 
@@ -641,14 +732,17 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         page.setTotal(total);
 
         if (total == 0) {
+            // 无数据时直接返回，避免执行无意义查询
             page.setRecords(Collections.emptyList());
             page.setPages(0L);
             return page;
         }
 
+        // 计算总页数（向上取整）
         long pages = total / pageSize + (total % pageSize == 0 ? 0 : 1);
         page.setPages(pages);
 
+        // 按方言生成分页 SQL（MySQL LIMIT、Oracle ROWNUM、PG/SQL Server OFFSET FETCH）
         String baseSql = "SELECT " + buildSelectColumns() + " FROM " + schema.getTableName();
         String paginationSql = buildPaginationSql(baseSql, pageNum, pageSize);
 
@@ -689,6 +783,14 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         }
     }
 
+    /**
+     * 批量保存记录（逐条调用 save）。
+     * <p>
+     * 未使用批量 INSERT，每条记录独立处理自动填充与 upsert 判断。
+     *
+     * @param dataList 数据列表，为 null 或空时返回空列表
+     * @return 保存后的数据列表（含自动生成的主键与自动填充字段）
+     */
     @Override
     public List<Map<String, Object>> saveBatch(List<Map<String, Object>> dataList) {
         if (dataList == null || dataList.isEmpty()) {
@@ -701,12 +803,20 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         return result;
     }
 
+    /**
+     * 根据主键列表批量删除。
+     * <p>
+     * 通过 IN 子句一次性删除，每个 ID 用独立命名参数（id_0、id_1、…）。
+     *
+     * @param ids 主键列表，为 null 或空时不执行任何操作
+     */
     @Override
     public void removeBatchByIds(List<Object> ids) {
         if (ids == null || ids.isEmpty()) {
             return;
         }
         String idFieldName = schema.getIdFieldName();
+        // 拼接 IN 子句的命名参数占位符：#{id_0}, #{id_1}, ...
         StringBuilder placeholders = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
         for (int i = 0; i < ids.size(); i++) {
@@ -721,12 +831,21 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         executeUpdate(sql, params, SqlCommandType.DELETE);
     }
 
+    /**
+     * 根据主键列表批量查询。
+     * <p>
+     * 通过 IN 子句一次性查询，使用 schema 中的明确列名替代 SELECT *。
+     *
+     * @param ids 主键列表，为 null 或空时返回空列表
+     * @return 匹配记录列表
+     */
     @Override
     public List<Map<String, Object>> listByIds(List<Object> ids) {
         if (ids == null || ids.isEmpty()) {
             return Collections.emptyList();
         }
         String idFieldName = schema.getIdFieldName();
+        // 拼接 IN 子句的命名参数占位符：#{id_0}, #{id_1}, ...
         StringBuilder placeholders = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
         for (int i = 0; i < ids.size(); i++) {
@@ -742,6 +861,15 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         return executeSelect(sql, params);
     }
 
+    /**
+     * 按条件统计记录数。
+     * <p>
+     * 通过动态注册返回 Long 的 COUNT MappedStatement 执行；结果兼容 {@link Number} 类型，
+     * 统一转为 long 返回。
+     *
+     * @param queryParams 查询条件 Map，为 null 或空时统计全表
+     * @return 匹配的记录数
+     */
     @Override
     public long count(Map<String, Object> queryParams) {
         StringBuilder sql = new StringBuilder();
@@ -749,6 +877,7 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         Map<String, Object> params = new HashMap<>();
 
         if (queryParams != null && !queryParams.isEmpty()) {
+            // 动态拼接 WHERE 子句：仅 schema 内字段参与，AND 连接等值条件
             StringBuilder where = new StringBuilder(" WHERE ");
             boolean first = true;
             for (Map.Entry<String, Object> entry : queryParams.entrySet()) {
@@ -768,11 +897,13 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
             }
         }
 
+        // COUNT 走专用 Long ResultMap 的 MappedStatement
         String statementId = nextStatementId("count");
         try {
             registerCountStatement(statementId, sql.toString());
             try (SqlSession session = sqlSessionFactory.openSession(true)) {
                 Object result = session.selectOne(statementId, params);
+                // 兼容不同驱动返回的 Number 子类（Long/BigInteger 等）
                 if (result instanceof Number) {
                     return ((Number) result).longValue();
                 }
@@ -783,6 +914,12 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
         }
     }
 
+    /**
+     * 判断是否存在匹配条件的记录。
+     *
+     * @param queryParams 查询条件 Map
+     * @return 存在返回 true，否则 false
+     */
     @Override
     public boolean exists(Map<String, Object> queryParams) {
         return count(queryParams) > 0;
@@ -800,8 +937,10 @@ public class MySqlLowCodeStorage implements LowCodeStorage {
     private void fillAutoFields(Map<String, Object> data, AutoFillType fillType) {
         LocalDateTime now = LocalDateTime.now();
         for (FieldSchema field : schema.getFields().values()) {
+            // 仅处理与当前填充类型匹配的字段（CREATE / UPDATE / CREATE_UPDATE）
             if (field.getAutoFill() == fillType) {
                 String name = field.getName();
+                // 按字段类型生成对应的时间值：DATETIME 用 LocalDateTime，DATE 用 LocalDate
                 switch (field.getType()) {
                     case DATETIME -> data.putIfAbsent(name, now);
                     case DATE -> data.putIfAbsent(name, now.toLocalDate());

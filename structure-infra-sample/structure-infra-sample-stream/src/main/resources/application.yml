@@ -1,0 +1,26 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: structure-infra-sample-stream
+  rabbitmq:
+    addresses: 172.24.20.15:5672
+    username: root
+    password: 123456
+    virtual-host: /
+  cloud:
+    stream:
+      rabbit:
+        binder:
+          admin-addresses: ${spring.rabbitmq.addresses}
+          username: ${spring.rabbitmq.username}
+          password: ${spring.rabbitmq.password}
+          virtual-host: ${spring.rabbitmq.virtual-host}
+  cache:
+    type: simple
+
+structure:
+  infra:
+    stream:
+      enabled: true
