@@ -123,19 +123,16 @@ public class DefaultStreamEventManagerImpl implements StreamEventManager {
      * <p>实现说明：
      * <ol>
      *   <li>调用 {@link #ensureBindingRegistered} 保证 binding 已注册（动态 binding 注册）</li>
-     *   <li>构建 {@link Message}，通过 {@link StreamBridge#send} 投递到 <code>{bindingName}-out-0</code> 输出通道</li>
+     *   <li>构建 {@link Message}，通过 {@link StreamBridge#send} 直接投递到指定的 destination</li>
      * </ol>
      */
     @Override
     public <T> void publish(String bindingName, String destination, String group, T event) {
-        // 动态 binding 注册：若 binding 缺失则补注册，确保 publish 链路可用
         ensureBindingRegistered(bindingName, destination, group);
 
-        // Spring Cloud Stream 约定：输出 binding 名为 {bindingName}-out-0
-        String outputBindingName = bindingName + "-out-0";
         Message<T> message = MessageBuilder.withPayload(event).build();
-        streamBridge.send(outputBindingName, message);
-        log.debug("Published event to binding: {}, destination: {}, group: {}", outputBindingName, destination, group);
+        streamBridge.send(destination, message);
+        log.debug("Published event to destination: {}, bindingName: {}, group: {}", destination, bindingName, group);
     }
 
     /**
@@ -354,10 +351,11 @@ public class DefaultStreamEventManagerImpl implements StreamEventManager {
         String outputBinding = bindingName + "-out-0";
 
         String inputDestKey = SPRING_BINDINGS_PREFIX + "." + inputBinding + ".destination";
+        String outputDestKey = SPRING_BINDINGS_PREFIX + "." + outputBinding + ".destination";
         
         // 检查是否已存在配置（避免覆盖已有的显式配置）
-        if (environment.containsProperty(inputDestKey)) {
-            log.debug("Cloud Stream binding already configured: {}", inputDestKey);
+        if (environment.containsProperty(outputDestKey)) {
+            log.debug("Cloud Stream binding already configured: {}", outputDestKey);
             return;
         }
 
