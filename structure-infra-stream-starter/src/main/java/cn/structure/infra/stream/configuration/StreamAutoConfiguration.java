@@ -15,6 +15,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.ConfigurableEnvironment;
 
 /**
  * stream 模块的自动配置类，注册所有核心 Bean。
@@ -54,13 +55,15 @@ public class StreamAutoConfiguration {
      *
      * @param streamBridge     Spring Cloud Stream 桥接器
      * @param streamProperties stream 主配置
+     * @param environment      Spring 配置环境，用于动态注册 Cloud Stream binding
      * @return 事件管理器实例
      */
     @Bean
     @ConditionalOnMissingBean
     public StreamEventManager streamEventManager(StreamBridge streamBridge,
-                                                  StreamProperties streamProperties) {
-        return new DefaultStreamEventManagerImpl(streamBridge, streamProperties);
+                                                  StreamProperties streamProperties,
+                                                  ConfigurableEnvironment environment) {
+        return new DefaultStreamEventManagerImpl(streamBridge, streamProperties, environment);
     }
 
     /**
