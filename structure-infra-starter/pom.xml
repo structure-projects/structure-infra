@@ -34,10 +34,6 @@
         </dependency>
         <dependency>
             <groupId>cn.structured</groupId>
-            <artifactId>structure-datascope-cache</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>cn.structured</groupId>
             <artifactId>structure-infra-schedule-starter</artifactId>
             <version>${revision}</version>
         </dependency>

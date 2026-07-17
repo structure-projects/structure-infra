@@ -3,13 +3,13 @@ package cn.structure.infra.annotations;
 import cn.structure.infra.repository.RepositoryType;
 
 import java.lang.annotation.*;
-import java.util.concurrent.TimeUnit;
+
 
 /**
  * 仓储标记注解
  * <p>
  * 标注在 {@link cn.structure.infra.repository.RepositoryFacade} 的子类上，
- * 用于声明一个领域仓储及其元数据（实体类型、PO 类型、主键类型、缓存策略、CQRS 配置等）。
+ * 用于声明一个领域仓储及其元数据（实体类型、PO 类型、主键类型、CQRS 配置等）。
  * <p>
  * 框架在启动时通过 {@link cn.structure.infra.repository.RepositoryBeanPostProcessor}
  * 扫描此注解，并根据配置自动注入对应的 BASE/READ Delegate。
@@ -89,27 +89,6 @@ public @interface Repository {
      */
     String description() default "";
 
-
-    /**
-     * 是否启用缓存
-     *
-     * @return true 表示启用缓存
-     */
-    boolean cache() default false;
-
-    /**
-     * 缓存时间
-     *
-     * @return 缓存过期时间数值
-     */
-    long cacheTime() default 60L;
-
-    /**
-     * 缓存时间单位
-     *
-     * @return 缓存时间单位
-     */
-    TimeUnit cacheTimeUnit() default TimeUnit.SECONDS;
 
     /**
      * 是否启用 CQRS 读写分离

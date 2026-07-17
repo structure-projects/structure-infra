@@ -4,7 +4,7 @@ import cn.structure.infra.annotations.Repository;
 import cn.structure.infra.repository.RepositoryType;
 import lombok.Data;
 
-import java.util.concurrent.TimeUnit;
+
 
 /**
  * 仓储定义元数据
@@ -49,21 +49,6 @@ public class RepositoryDefinition {
     private String description;
 
     /**
-     * 是否启用缓存
-     */
-    private boolean cache;
-
-    /**
-     * 缓存时间
-     */
-    private long cacheTime;
-
-    /**
-     * 缓存时间单位
-     */
-    private TimeUnit cacheTimeUnit;
-
-    /**
      * 是否启用 CQRS 读写分离
      * <p>
      * 启用后，读操作使用 readDelegate，写操作使用 baseDelegate
@@ -101,9 +86,6 @@ public class RepositoryDefinition {
         definition.setPoClass(annotation.po());
         definition.setIdClass(annotation.id());
         definition.setDescription(annotation.description());
-        definition.setCache(annotation.cache());
-        definition.setCacheTime(annotation.cacheTime());
-        definition.setCacheTimeUnit(annotation.cacheTimeUnit());
         definition.setCqrs(annotation.cqrs());
         definition.setReadDelegateClass(annotation.readDelegateClass());
         definition.setAnnotation(annotation);

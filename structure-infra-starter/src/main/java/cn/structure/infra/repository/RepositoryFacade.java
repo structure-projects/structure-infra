@@ -3,11 +3,11 @@ package cn.structure.infra.repository;
 import cn.structure.common.repository.ICrudRepository;
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
-import cn.structured.datascope.cache.manager.DataScopeCacheManager;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+
 
 import java.util.List;
 import java.util.Optional;
@@ -39,10 +39,7 @@ import java.util.Optional;
 @Slf4j
 public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> implements ICrudRepository<T, ID> {
 
-    /**
-     * 数据权限缓存管理器（保留扩展点，子类可启用缓存）
-     */
-    protected DataScopeCacheManager cacheManager;
+
 
     /**
      * 基础代理
@@ -354,7 +351,7 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
     /**
      * PO → Entity 转换
      * <p>
-     * 通过反射调用无参构造函数创建 Entity 实例，并使用 {@link BeanUtils#copyProperties}
+     * 通过反射调用无参构造函数创建 Entity 实例，并使用 {@link BeanUtils#copyProperties(Object, Object)}
      * 复制同名属性。子类可重写以实现自定义映射逻辑。
      *
      * @param po 持久化对象，为 null 时返回 null
@@ -377,7 +374,7 @@ public class RepositoryFacade<T, ID, P, D extends RepositoryDelegate<P, ID>> imp
     /**
      * Entity → PO 转换
      * <p>
-     * 通过反射调用无参构造函数创建 PO 实例，并使用 {@link BeanUtils#copyProperties}
+     * 通过反射调用无参构造函数创建 PO 实例，并使用 {@link BeanUtils#copyProperties(Object, Object)}
      * 复制同名属性。子类可重写以实现自定义映射逻辑。
      *
      * @param entity 领域实体，为 null 时返回 null

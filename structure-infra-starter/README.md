@@ -122,9 +122,6 @@ RepositoryDelegate<?, ?> createDelegate(Class<?> poClass, Class<?> idClass);
 | `po` | `Class<?>` | `Object.class` | 持久化对象类 |
 | `id` | `Class<?>` | `Long.class` | 主键类型 |
 | `description` | String | `""` | 描述 |
-| `cache` | boolean | `false` | 是否启用缓存 |
-| `cacheTime` | long | `60L` | 缓存 TTL |
-| `cacheTimeUnit` | `TimeUnit` | `SECONDS` | 缓存单位 |
 | `cqrs` | boolean | `false` | 是否启用 CQRS |
 | `readDelegateClass` | `Class<?>` | `Object.class` | 读代理类（CQRS 时必填） |
 
@@ -385,8 +382,6 @@ public class UserEventListener {
 |-----|------|-------|------|
 | `defaultEventChannel` | `EventChannel` | `SPRING_EVENT` | `DEFAULT` 事件的默认通道 |
 | `cqrs` | `Boolean` | `false` | 全局 CQRS 开关（仅作建议，以 `@Repository` 注解为准） |
-| `cacheTime` | `Long` | `60L` | 默认缓存 TTL |
-| `cacheTimeUnit` | `TimeUnit` | `SECONDS` | 默认缓存单位 |
 | `schedulePoolSize` | `Integer` | `Runtime.availableProcessors()` | 调度线程池大小 |
 | `type` | `RepositoryType` | - | 默认持久化类型（用于触发各 starter 的条件装配） |
 
