@@ -15,7 +15,7 @@
 - **条件激活**：仅当 classpath 存在 `JpaRepository` 且上下文有 `EntityManager` bean 时激活
 - **启用 Spring Data JPA**：自动应用 `@EnableJpaRepositories` 与 `@EnableTransactionManagement`
 - **自动创建 delegate**：`JpaDelegateFactory` 按需为任意 PO 类实例化 `JpaRepositoryDelegate`
-- **自动注入 EntityManager**：`JpaDelegateBeanPostProcessor` 发现用户自定义的 `JpaRepositoryDelegate` bean，注入 `EntityManager` 与从 `@DelegateFor.po()` 解析的实体类
+- **自动注入 EntityManager**：`JpaDelegateBeanPostProcessor` 发现用户自定义的 `JpaRepositoryDelegate` bean，注入 `EntityManager` 与泛型解析的实体类
 - **完整 CRUD + 分页 + 条件查询**：基于 JPA Criteria API 实现，通过反射读取条件对象的非空字段构建等值谓词
 - **CQRS 兼容**：可作为 BASE 代理或 READ 代理，与 `RepositoryFacade` 的读写分离机制无缝配合
 
@@ -180,8 +180,8 @@ public class UserPO {
 ### 4. 定义 delegate 接口（可选，用于自定义查询）
 
 ```java
-public interface UserRepositoryDelegate extends RepositoryDelegate<UserPO, Long> {
-    UserPO finByName(String name);
+public interface UserRepositoryDelegate extends RepositoryDelegate<UserEntity, Long> {
+    UserEntity findByName(String name);
 }
 ```
 
@@ -189,28 +189,25 @@ public interface UserRepositoryDelegate extends RepositoryDelegate<UserPO, Long>
 
 ```java
 public abstract class AbstractUserRepositoryImpl
-        extends RepositoryFacade<UserEntity, Long, UserPO, UserRepositoryDelegate>
+        extends RepositoryFacade<UserEntity, Long, UserRepositoryDelegate>
         implements UserRepository {
 
     @Override
     public UserEntity findByName(String name) {
-        UserPO po = this.baseDelegate.finByName(name);
-        return this.toEntity(po);
+        return getDelegate().findByName(name);
     }
 }
 ```
 
-### 6. 声明具体 JPA 仓储（标注 `@Repository`）
+### 6. 声明具体 JPA 仓储
 
 ```java
-@Repository(value = "用户仓储", type = RepositoryType.JPA,
-            entity = UserEntity.class, po = UserPO.class)
 @Component("userRepository")
 public class UserJpaRepositoryImpl extends AbstractUserRepositoryImpl {
 }
 ```
 
-仓储体为空 — 所有 CRUD 行为由继承的 `RepositoryFacade` 与自动创建的 `JpaRepositoryDelegate` 提供。用户只需通过 `@Repository` 注解声明类型元数据。
+仓储体为空 — 所有 CRUD 行为由继承的 `RepositoryFacade` 与自动创建的 `JpaRepositoryDelegate` 提供。`RepositoryBeanPostProcessor` 通过泛型解析自动注入 delegate。
 
 ### 7. 业务层使用
 
@@ -249,13 +246,14 @@ public EntityManager entityManager(EntityManagerFactory entityManagerFactory) {
 2. `JpaAutoConfiguration` 激活（`JpaRepository` 在 classpath 上）
 3. `EntityManager` bean 就绪后，`JpaDelegateFactory` 注册为 `RepositoryDelegateFactory` 类型为 `JPA`
 4. `JpaDelegateBeanPostProcessor` 注册
-5. 用户的 `@Repository(type = JPA, po = UserPO.class)` 注解类实例化为 `RepositoryFacade` 子类
-6. `structure-infra-starter` 中的 `RepositoryBeanPostProcessor` 在 `ContextRefreshedEvent` 触发：
-   - 查找用户定义的 `@DelegateFor` BASE delegate；若未找到，调用 `JpaDelegateFactory.createDelegate(UserPO.class, Long.class)` 返回完整构造的 `JpaRepositoryDelegate(entityManager, UserPO.class)`
-   - 通过 `facade.setBaseDelegate(delegate)` 注入
-7. 若用户定义了 `JpaRepositoryDelegate` 子类并标注 `@DelegateFor(po = UserPO.class)`，`JpaDelegateBeanPostProcessor` 在初始化后处理：
+5. 用户的 `RepositoryFacade` 子类实例化为 bean
+6. `structure-infra-starter` 中的 `RepositoryBeanPostProcessor` 在 Bean 初始化后触发：
+   - 解析 `RepositoryFacade` 泛型参数获取 delegate 类型
+   - 查找用户定义的 delegate bean；若未找到，调用 `JpaDelegateFactory.createDelegate(UserPO.class, Long.class)` 返回完整构造的 `JpaRepositoryDelegate(entityManager, UserPO.class)`
+   - 通过 `facade.setDelegate(delegate)` 注入
+7. 若用户定义了 `JpaRepositoryDelegate` 子类并标注 `@Component`，`JpaDelegateBeanPostProcessor` 在初始化后处理：
    - 解析并注入 `EntityManager`
-   - 从 `@DelegateFor.po()` 读取并注入 `entityClass`
+   - 通过泛型解析注入 `entityClass`
 8. 应用调用 `userRepository.save(entity)` → `RepositoryFacade` 转换为 PO → `JpaRepositoryDelegate.save(po)` → `entityManager.merge(po)` → 转换回 entity
 
 ## 注意事项

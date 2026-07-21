@@ -21,7 +21,7 @@
 ```
 structure-pro-infra/
 ├── structure-infra-starter/                # 核心模块（仓储抽象、低代码、事件管理、调度集成）
-│   ├── annotations/                        # @Repository / @DelegateFor 注解
+│   ├── annotations/                        # @WriteDelegate / @ReadDelegate 注解
 │   ├── configuration/                      # 自动配置（仓储、事件、调度）
 │   ├── event/                              # 事件管理抽象
 │   ├── lowcode/                            # 低代码仓储子系统
@@ -296,16 +296,36 @@ public class UserPO {
 }
 ```
 
-### 3. 创建 RepositoryFacade
+### 3. 创建 RepositoryFacade（单代理模式）
 
 ```java
-@Repository(entity = User.class, po = UserPO.class, type = RepositoryType.MYBATIS_PLUS)
-public class UserRepository extends RepositoryFacade<User, Long, UserPO, MybatisPlusRepositoryDelegate<UserPO, Long>> {
-    // 可添加自定义方法
+@Component("userRepository")
+public class UserRepositoryImpl extends RepositoryFacade<UserEntity, Long, UserMybatisPlusDelegate> 
+    implements UserRepository {
 }
 ```
 
-### 4. 使用仓储
+### 4. 创建 Delegate 实现
+
+```java
+@Slf4j
+@Component
+public class UserMybatisPlusDelegate 
+    extends MybatisPlusRepositoryDelegate<UserEntity, UserPO, Long> 
+    implements UserRepositoryDelegate {
+    
+    private final UserMapper userMapper;
+    
+    @Override
+    public UserEntity findByName(String name) {
+        UserPO po = userMapper.selectOne(
+            Wrappers.<UserPO>lambdaQuery().eq(UserPO::getUsername, name));
+        return toEntity(po);
+    }
+}
+```
+
+### 5. 使用仓储
 
 ```java
 @Service
@@ -314,75 +334,82 @@ public class UserService {
     @Autowired
     private UserRepository userRepository;
     
-    public User saveUser(User user) {
+    public UserEntity saveUser(UserEntity user) {
         return userRepository.save(user);
     }
     
-    public User getUserById(Long id) {
+    public UserEntity getUserById(Long id) {
         return userRepository.findById(id);
     }
     
-    public List<User> findUsers(User condition) {
+    public List<UserEntity> findUsers(UserEntity condition) {
         return userRepository.queryList(condition);
     }
     
-    public ResPage<User> findUsersPage(ReqPage reqPage) {
+    public ResPage<UserEntity> findUsersPage(ReqPage reqPage) {
         return userRepository.queryPage(reqPage);
     }
 }
 ```
 
-### 5. CQRS 读写分离模式（可选）
+### 6. CQRS 读写分离模式（可选）
 
-当需要读写分离时，可以为同一个仓储配置两个代理。**必须同时满足 `cqrs=true` 和 `readDelegateClass` 指定才会启用读代理**。
+当需要读写分离时，使用 `CqrsRepositoryFacade` 并为写代理和读代理分别添加 `@WriteDelegate` 和 `@ReadDelegate` 注解。
 
-**1) 启用 CQRS**
+**1) 定义写代理**
 
 ```java
-@Repository(
-    entity = User.class, 
-    po = UserPO.class, 
-    type = RepositoryType.MYBATIS_PLUS,
-    cqrs = true,                                    // 启用 CQRS
-    readDelegateClass = UserReadDelegate.class      // 指定读代理类
-)
-public class UserRepository extends RepositoryFacade<User, Long, UserPO, MybatisPlusRepositoryDelegate<UserPO, Long>> {
+@Slf4j
+@Component
+@WriteDelegate
+public class UserWriteDelegate 
+    extends MybatisPlusRepositoryDelegate<UserEntity, UserPO, Long> 
+    implements UserRepositoryDelegate {
+    
+    private final UserMapper userMapper;
 }
 ```
 
-**2) 定义写代理（BASE）**
+**2) 定义读代理**
 
 ```java
-@DelegateFor(
-    name = "userRepository", 
-    po = UserPO.class, 
-    type = RepositoryType.MYBATIS_PLUS,
-    delegateType = DelegateType.BASE  // 写代理
-)
-public class UserWriteDelegate extends MybatisPlusRepositoryDelegate<UserPO, Long> {
+@Slf4j
+@Component
+@ReadDelegate
+public class UserReadDelegate 
+    extends ElasticsearchRepositoryDelegate<UserEntity, UserPO, Long> 
+    implements UserRepositoryDelegate {
+    
+    @Override
+    public UserEntity findByName(String name) {
+        // Elasticsearch 查询实现
+        return null;
+    }
 }
 ```
 
-**3) 定义读代理（READ）**
+**3) 创建 CqrsRepositoryFacade**
 
 ```java
-@DelegateFor(
-    name = "userRepository", 
-    po = UserPO.class, 
-    type = RepositoryType.ELASTICSEARCH,
-    delegateType = DelegateType.READ  // 读代理
-)
-public class UserReadDelegate extends ElasticsearchRepositoryDelegate<UserPO, Long> {
+@Component("userCqrsRepository")
+public class UserCqrsRepository 
+    extends CqrsRepositoryFacade<UserEntity, Long, UserWriteDelegate, UserReadDelegate> 
+    implements UserRepository {
+    
+    @Override
+    public UserEntity findByName(String name) {
+        return getReadDelegate().findByName(name);
+    }
 }
 ```
 
 **读操作回退机制**：
-- 写操作（save、removeById、saveBatch、removeBatchByIds）始终走 BASE 代理（MyBatis Plus）
-- 读操作（findById、queryList、queryPage、count、exists 等）优先走 READ 代理（Elasticsearch）
-- 如果 READ 代理执行失败（抛出异常），自动回退到 BASE 代理执行
-- BASE 代理是最后的兜底，确保读操作始终可用
+- 写操作（save、removeById、saveBatch、removeBatchByIds）始终走写代理（`delegate`）
+- 读操作（queryById、queryList、queryPage、count、exists 等）优先走读代理（`readDelegate`）
+- 如果读代理执行失败（抛出异常），自动回退到写代理执行
+- `findById` 始终走写代理（严格的实体查询）
 
-### 6. 低代码仓储使用
+### 7. 低代码仓储使用
 
 低代码仓储无需定义实体类，通过资源名称和 Map 操作数据。
 
@@ -535,36 +562,31 @@ public class UserEventPublisher {
 
 ## 注解说明
 
-### @Repository
+### @WriteDelegate
 
-标注在 `RepositoryFacade` 子类上，配置仓储属性：
+标注在 `RepositoryDelegate` 实现类上，标记为写代理/基础代理。当存在多个同类型的 delegate bean 时，`RepositoryBeanPostProcessor` 优先选择带有此注解的 bean 作为写代理。
 
-| 属性 | 类型 | 默认值 | 说明 |
-|-----|------|-------|------|
-| `value` | String | "" | 仓储名称 |
-| `type` | RepositoryType | AUTO | 仓储类型 |
-| `entity` | Class | Object.class | 领域实体类 |
-| `po` | Class | Object.class | 持久化对象类 |
-| `id` | Class | Long.class | 主键类型 |
-| `description` | String | "" | 仓储描述 |
-| `cache` | boolean | false | 是否启用缓存 |
-| `cacheTime` | long | 60 | 缓存时间 |
-| `cacheTimeUnit` | TimeUnit | SECONDS | 缓存时间单位 |
-| `cqrs` | boolean | false | 是否启用 CQRS 读写分离 |
-| `readDelegateClass` | Class | Object.class | 读代理类（CQRS 模式下使用） |
+```java
+@Qualifier
+@Target({ElementType.FIELD, ElementType.PARAMETER, ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface WriteDelegate {
+}
+```
 
-### @DelegateFor
+### @ReadDelegate
 
-标注在自定义 `RepositoryDelegate` 实现类上，用于注册委托：
+标注在 `IQueryDelegate` / `RepositoryDelegate` 实现类上，标记为读代理。`RepositoryBeanPostProcessor` 使用此注解识别读代理，用于 CQRS 模式下的读操作。
 
-| 属性 | 类型 | 默认值 | 说明 |
-|-----|------|-------|------|
-| `name` | String | "" | 仓储名称（对应 RepositoryFacade 的 Bean 名称） |
-| `type` | RepositoryType | AUTO | 存储类型 |
-| `po` | Class | Object.class | 持久化对象类型 |
-| `description` | String | "" | 描述 |
-| `priority` | int | 0 | 优先级（数字越大优先级越高） |
-| `delegateType` | DelegateType | BASE | 委托类型（BASE=写/默认，READ=读） |
+```java
+@Qualifier
+@Target({ElementType.FIELD, ElementType.PARAMETER, ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface ReadDelegate {
+}
+```
 
 ## 配置项
 
@@ -574,7 +596,7 @@ public class UserEventPublisher {
 structure:
   infra:
     default-event-channel: SPRING_EVENT  # 默认事件通道：DEFAULT, SPRING_EVENT, MESSAGE_EVENT
-    cqrs: false                           # 是否开启 CQRS（仅作建议，以 @Repository 注解为准）
+    cqrs: false                           # 是否开启 CQRS（仅作建议）
     cache-time: 60                        # 默认缓存时间
     cache-time-unit: SECONDS              # 默认缓存时间单位
     schedule-pool-size: 8                 # 调度线程池大小（默认 CPU 核心数）
@@ -655,17 +677,24 @@ structure:
 当默认实现无法满足需求时，可以自定义委托实现：
 
 ```java
-@DelegateFor(name = "userRepository", po = UserPO.class, type = RepositoryType.MYBATIS_PLUS)
-public class UserMybatisPlusDelegate extends MybatisPlusRepositoryDelegate<UserPO, Long> {
+@Slf4j
+@Component
+public class UserMybatisPlusDelegate 
+    extends MybatisPlusRepositoryDelegate<UserEntity, UserPO, Long> 
+    implements UserRepositoryDelegate {
     
-    // 自定义查询方法
-    public List<UserPO> findByEmailLike(String emailPattern) {
-        QueryWrapper<UserPO> wrapper = new QueryWrapper<>();
-        wrapper.like("email", emailPattern);
-        return baseMapper.selectList(wrapper);
+    private final UserMapper userMapper;
+    
+    @Override
+    public UserEntity findByEmailLike(String emailPattern) {
+        UserPO po = userMapper.selectOne(
+            Wrappers.<UserPO>lambdaQuery().like(UserPO::getEmail, emailPattern));
+        return toEntity(po);
     }
 }
 ```
+
+> 注意：Delegate 实现类需要通过泛型参数指定领域实体类型（T）、持久化对象类型（PO）和主键类型（ID），内部自动处理 PO 到 Entity 的转换。
 
 ### 新增持久化技术支持
 
@@ -684,22 +713,38 @@ public class UserMybatisPlusDelegate extends MybatisPlusRepositoryDelegate<UserP
 
 ## 委托匹配策略
 
-`RepositoryBeanPostProcessor` 在应用启动时自动匹配 delegate 到 facade。
+`RepositoryBeanPostProcessor` 在 Bean 初始化后执行匹配：
 
-### BASE 代理匹配优先级
+1. **解析泛型签名**：从 `RepositoryFacade` / `CqrsRepositoryFacade` 子类的泛型参数中提取委托类型
+2. **写代理搜索**（按优先级）：
+   1. 类型匹配 + `@WriteDelegate` 标记
+   2. 类型匹配 + 无 `@ReadDelegate` 标记
+   3. 类型匹配（兜底）
+3. **读代理搜索**（仅 `CqrsRepositoryFacade`）：
+   1. 类型匹配 + `@ReadDelegate` 标记
+   2. 类型匹配（兜底）
 
-1. 匹配 delegate 类型 + 名称 + 仓储类型
-2. 匹配 delegate 类型 + 仓储类型
-3. 匹配 delegate 类型 + 名称
-4. 匹配 delegate 类型
-5. 匹配名称
-6. 匹配 PO 类型
-7. 自动创建（通过 RepositoryDelegateFactory）
-8. 使用默认的 InMemoryRepositoryDelegate
+### 单代理模式（RepositoryFacade）
 
-### READ 代理匹配优先级（CQRS 启用时）
+继承自 `RepositoryFacade<T, ID, D>`，其中 `D` 是 `RepositoryDelegate<T, ID>` 的实现类。`RepositoryBeanPostProcessor` 根据泛型参数 `D` 查找对应的 delegate bean 并注入。
 
-与 BASE 代理匹配策略相同，但只匹配 `delegateType = READ` 的委托。如果未找到 READ 代理，读操作会回退到使用 BASE 代理。
+### CQRS 模式（CqrsRepositoryFacade）
+
+继承自 `CqrsRepositoryFacade<T, ID, D, RD>`，其中：
+- `D`：写代理类型（继承 `RepositoryDelegate<T, ID>`）
+- `RD`：读代理类型（继承 `IQueryDelegate<T, ID>`）
+
+`RepositoryBeanPostProcessor` 根据泛型参数分别查找写代理和读代理：
+- 写代理：通过 `@WriteDelegate` 注解或类型匹配查找
+- 读代理：通过 `@ReadDelegate` 注解或类型匹配查找
+
+### 委托创建兜底
+
+当未找到用户自定义的 delegate bean 时，`RepositoryDelegateFactory` 会按约定自动创建：
+- 根据 PO 类名推导 Mapper 类（`xxx.po.UserPO` → `xxx.mapper.UserMapper`）
+- 从 `ApplicationContext` 查找该 Mapper bean
+- 找到则创建对应的 `RepositoryDelegate` 实例
+- 未找到则使用默认的 `InMemoryRepositoryDelegate`（仅用于测试或无持久化场景）
 
 ## 技术栈
 

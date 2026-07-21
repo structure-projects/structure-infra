@@ -2,17 +2,18 @@
 
 [MyBatis-Plus](https://baomidou.com/) 接入 `structure-pro-infra` 仓储抽象层的适配模块，提供：
 
-1. **类型化仓储**：通过 `RepositoryFacade` + `MybatisPlusRepositoryDelegate` 透明地以 MyBatis-Plus `BaseMapper` 操作 PO
+1. **类型化仓储**：通过 `RepositoryFacade` + `MybatisPlusRepositoryDelegate` 透明地以 MyBatis-Plus `BaseMapper` 操作领域实体
 2. **低代码 MySQL/H2 存储**：通过 `LowCodeStorage` 实现基于 MyBatis `SqlSession` 的动态表/SQL，无需定义实体类
 
 ## 功能特性
 
 ### 类型化仓储层
 
-- **自动 delegate 创建**：当 `RepositoryFacade` 需要某个 PO 的 delegate 但无用户自定义 bean 时，`MybatisPlusDelegateFactory` 自动发现匹配的 `BaseMapper` 并实例化 `MybatisPlusRepositoryDelegate`
-- **自定义 delegate 支持**：用户可继承 `MybatisPlusRepositoryDelegate` 并标注 `@DelegateFor`，`MybatisPlusDelegateBeanPostProcessor` 会自动注入 `BaseMapper` 与 PO 类型
+- **自动 delegate 创建**：当 `RepositoryFacade` 需要某个实体的 delegate 但无用户自定义 bean 时，`MybatisPlusDelegateFactory` 自动发现匹配的 `BaseMapper` 并实例化 `MybatisPlusRepositoryDelegate`
+- **自定义 delegate 支持**：用户可继承 `MybatisPlusRepositoryDelegate` 并标注 `@WriteDelegate` 或 `@ReadDelegate`，`MybatisPlusDelegateBeanPostProcessor` 会自动注入 `BaseMapper` 与 PO 类型
 - **约定优于配置的 Mapper 发现**：从 PO 类名推导 Mapper 类（`xxx.po.UserPO` → `xxx.mapper.UserMapper`，`PO` 后缀替换为 `Mapper`）；失败时回退到 bean 名称后缀匹配
-- **CQRS 支持**：可与 `ElasticsearchRepositoryDelegate` 等组合实现读写分离
+- **CQRS 支持**：可与 `ElasticsearchRepositoryDelegate` 等组合实现读写分离，通过 `@WriteDelegate` / `@ReadDelegate` 注解区分代理类型
+- **Entity ↔ PO 转换**：由 delegate 内部处理领域实体与持久化对象之间的转换
 
 ### 低代码 MySQL/H2 存储层
 
@@ -29,7 +30,7 @@
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-mybatis-plus-starter</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.1.1-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -61,14 +62,26 @@ cn.structure.infra.mybatis.plus.lowcode.configuration.MybatisPlusLowCodeAutoConf
 
 ### 类型化仓储层
 
-#### `MybatisPlusRepositoryDelegate<T, ID>`
+#### `MybatisPlusRepositoryDelegate<T, PO, ID>`
 
-实现 `RepositoryDelegate<T, ID>`，包装 `BaseMapper<T>` 提供：
+实现 `RepositoryDelegate<T, ID>`，包装 `BaseMapper<PO>` 提供：
 
 - `save` / `removeById` / `saveBatch` / `removeBatchByIds` — 写操作
 - `findById` / `queryById` / `queryByIdOptional` / `queryOne` / `queryOneOptional` / `queryList` / `queryPage` / `listByIds` / `count` / `exists` — 读操作
 - 通过反射读取条件对象的非空字段构建 `QueryWrapper`（驼峰转下划线）
-- 支持无参构造 + setter，便于子类被 `@DelegateFor` 标注后由后置处理器注入
+- 内部处理 `T`（领域实体）与 `PO`（持久化对象）之间的转换
+- 支持无参构造 + setter，便于子类被 `@WriteDelegate` / `@ReadDelegate` 标注后由后置处理器注入
+
+**泛型参数**：
+- `T` - 领域实体类型（Domain Entity）
+- `PO` - 持久化对象类型（Persistent Object）
+- `ID` - 主键类型
+
+**关键方法**：
+- `toEntity(PO po)` - 将 PO 转换为领域实体
+- `toPo(T entity)` - 将领域实体转换为 PO
+- `getEntityClass()` - 获取领域实体类型
+- `getPoClass()` - 获取持久化对象类型
 
 #### `MybatisPlusDelegateFactory`
 
@@ -76,14 +89,14 @@ cn.structure.infra.mybatis.plus.lowcode.configuration.MybatisPlusLowCodeAutoConf
 
 1. 按约定推导 Mapper 类（`po` 包段替换为 `mapper`，`PO` 后缀替换为 `Mapper`）
 2. 从 `ApplicationContext` 查找该 Mapper bean
-3. 找到则返回 `new MybatisPlusRepositoryDelegate<>(mapper, poClass)`，否则返回 `null`
+3. 找到则返回 `new MybatisPlusRepositoryDelegate<>(entityClass, poClass, mapper)`，否则返回 `null`
 
 #### `MybatisPlusDelegateBeanPostProcessor`
 
-`BeanPostProcessor`，对每个 `instanceof MybatisPlusRepositoryDelegate` 且带 `@DelegateFor` 注解的 bean：
+`BeanPostProcessor`，对每个 `instanceof MybatisPlusRepositoryDelegate` 的 bean：
 
-- 根据 `@DelegateFor.po()` 解析 Mapper bean
-- 调用 `setBaseMapper(mapper)` 与 `setEntityClass(poClass)` 完成注入
+- 根据泛型参数解析 Mapper bean
+- 调用 `setBaseMapper(mapper)` 与 `setEntityClass(entityClass)` / `setPoClass(poClass)` 完成注入
 
 ### 低代码存储层
 
@@ -211,8 +224,8 @@ public interface UserRepository extends ICrudRepository<UserEntity, Long> {
 #### 3. 定义 delegate 接口（可选，用于自定义查询）
 
 ```java
-public interface UserRepositoryDelegate extends RepositoryDelegate<UserPO, Long> {
-    UserPO finByName(String name);
+public interface UserRepositoryDelegate extends RepositoryDelegate<UserEntity, Long> {
+    UserEntity findByName(String name);
 }
 ```
 
@@ -220,21 +233,19 @@ public interface UserRepositoryDelegate extends RepositoryDelegate<UserPO, Long>
 
 ```java
 public abstract class AbstractUserRepositoryImpl
-        extends RepositoryFacade<UserEntity, Long, UserPO, UserRepositoryDelegate>
+        extends RepositoryFacade<UserEntity, Long, UserRepositoryDelegate>
         implements UserRepository {
 
     @Override
     public UserEntity findByName(String name) {
-        return toEntity(this.baseDelegate.finByName(name));
+        return getDelegate().findByName(name);
     }
 }
 ```
 
-#### 5. 定义具体仓储（标注 `@Repository`）
+#### 5. 定义具体仓储
 
 ```java
-@Repository(value = "用户仓储", type = RepositoryType.MYBATIS_PLUS,
-            entity = UserEntity.class, po = UserPO.class)
 @Component("userRepository")
 public class UserRepositoryImpl extends AbstractUserRepositoryImpl {
 }
@@ -243,32 +254,28 @@ public class UserRepositoryImpl extends AbstractUserRepositoryImpl {
 #### 6. 提供自定义 delegate（可选，用于自定义查询）
 
 ```java
+@Slf4j
 @Component
-@DelegateFor(
-    name = "userRepository",
-    type = RepositoryType.MYBATIS_PLUS,
-    po = UserPO.class,
-    description = "用户仓储 MyBatis Plus 实现",
-    priority = 10
-)
+@WriteDelegate
 @AllArgsConstructor
 public class UserMybatisPlusDelegate
-        extends MybatisPlusRepositoryDelegate<UserPO, Long>
+        extends MybatisPlusRepositoryDelegate<UserEntity, UserPO, Long>
         implements UserRepositoryDelegate {
 
     private final UserMapper userMapper;
 
     @Override
-    public UserPO finByName(String name) {
-        return userMapper.selectOne(
+    public UserEntity findByName(String name) {
+        UserPO po = userMapper.selectOne(
             Wrappers.<UserPO>lambdaQuery().eq(UserPO::getUsername, name));
+        return toEntity(po);
     }
 }
 ```
 
-`MybatisPlusDelegateBeanPostProcessor` 会基于 `@DelegateFor.po()` 自动调用 `setBaseMapper(userMapper)` 与 `setEntityClass(UserPO.class)`，因此继承的 CRUD 方法开箱即用。
+`MybatisPlusDelegateBeanPostProcessor` 会自动调用 `setBaseMapper(userMapper)` 与 `setPoClass(UserPO.class)`，因此继承的 CRUD 方法开箱即用。
 
-> 若未提供自定义 delegate，`MybatisPlusDelegateFactory.createDelegate(UserPO.class, Long.class)` 会按约定发现 `UserMapper` 并自动创建 `MybatisPlusRepositoryDelegate`。
+> 若未提供自定义 delegate，`MybatisPlusDelegateFactory.createDelegate(UserEntity.class, Long.class)` 会按约定发现 `UserMapper` 并自动创建 `MybatisPlusRepositoryDelegate`。
 
 #### 7. 业务层使用
 
@@ -288,6 +295,37 @@ reqPage.setSize(5);
 ResPage<UserEntity> page = userRepository.queryPage(reqPage);
 
 userRepository.removeById(id);
+```
+
+### CQRS 读写分离
+
+```java
+// 写代理
+@Slf4j
+@Component
+@WriteDelegate
+public class UserWriteDelegate
+        extends MybatisPlusRepositoryDelegate<UserEntity, UserPO, Long>
+        implements UserRepositoryDelegate {
+
+    private final UserMapper userMapper;
+}
+
+// 读代理（使用 Elasticsearch）
+@Slf4j
+@Component
+@ReadDelegate
+public class UserReadDelegate
+        extends ElasticsearchRepositoryDelegate<UserEntity, UserPO, Long>
+        implements UserRepositoryDelegate {
+}
+
+// CQRS 仓储
+@Component("userCqrsRepository")
+public class UserCqrsRepository
+        extends CqrsRepositoryFacade<UserEntity, Long, UserWriteDelegate, UserReadDelegate>
+        implements UserRepository {
+}
 ```
 
 ### 低代码仓储
