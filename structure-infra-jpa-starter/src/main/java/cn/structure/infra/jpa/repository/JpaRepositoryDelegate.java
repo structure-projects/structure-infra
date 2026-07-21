@@ -2,11 +2,11 @@ package cn.structure.infra.jpa.repository;
 
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
+import cn.structure.infra.repository.GenericTypeResolver;
 import cn.structure.infra.repository.RepositoryDelegate;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
@@ -14,10 +14,12 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.Id;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * 基于 JPA 的 RepositoryDelegate 适配实现
@@ -36,259 +38,234 @@ import java.util.Optional;
  *   <li>使用 Jakarta 命名空间（{@code jakarta.persistence.*}），适用于 Spring Boot 3.x</li>
  *   <li>查询条件通过反射读取实体非空字段，组装为 Criteria API 的 {@link Predicate}（等值匹配）</li>
  *   <li>save 委托给 {@link EntityManager#merge(Object)}，由 JPA 自动判断新增或更新</li>
- *   <li>分页采用"内存分页"：先 findAll 取全量再切片，适用于中小数据量；
- *       大数据量场景建议用户自定义 Delegate 子类覆盖 queryPage 使用原生 SQL 分页</li>
+ *   <li>分页使用 CriteriaBuilder 创建 COUNT 查询和物理分页，避免内存分页性能问题</li>
+ *   <li>ID 字段名通过 PO 类的 {@link Id} 注解自动识别，默认为 "id"</li>
+ *   <li>Entity ↔ PO 转换在此层完成，Facade 层只操作领域实体</li>
  * </ul>
  *
- * @param <T>  实体（PO）类型
+ * @param <E>  领域实体类型
+ * @param <P>  持久化对象类型（JPA Entity）
  * @param <ID> 主键类型
  * @author chuck
- * @version 1.0.1
+ * @version 1.0.3
  * @since 2026/6/28
  */
 @Slf4j
-public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
+public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID> {
 
-    /** JPA 实体管理器，承担实际持久化操作 */
+    @Autowired
     protected EntityManager entityManager;
-    /** PO 实体类型，用于 Criteria API 与 find */
-    protected Class<T> entityClass;
+    protected Class<E> entityClass;
+    protected Class<P> poClass;
+    protected Class<ID> idClass;
+    protected String idFieldName = "id";
 
-    /**
-     * 默认构造器，用于用户自定义子类场景。
-     * <p>
-     * 创建后由 {@link JpaDelegateBeanPostProcessor} 通过 setter 注入依赖。
-     */
     public JpaRepositoryDelegate() {
+        resolveGenericTypes();
+        resolveIdFieldName();
+        log.info("JpaRepositoryDelegate initialized: entity={}, po={}, id={}, idField={}",
+                entityClass != null ? entityClass.getSimpleName() : "null",
+                poClass != null ? poClass.getSimpleName() : "null",
+                idClass != null ? idClass.getSimpleName() : "null",
+                idFieldName);
     }
 
-    /**
-     * 全参构造器，工厂自动创建场景使用。
-     *
-     * @param entityManager JPA 实体管理器
-     * @param entityClass   PO 实体类型
-     */
-    public JpaRepositoryDelegate(EntityManager entityManager, Class<T> entityClass) {
-        this.entityManager = entityManager;
-        this.entityClass = entityClass;
-        log.info("JpaRepositoryDelegate initialized for entity: {}", entityClass.getSimpleName());
+    @SuppressWarnings("unchecked")
+    protected void resolveGenericTypes() {
+        this.entityClass = (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
+        this.poClass = (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
+        this.idClass = (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
     }
 
-    /**
-     * 注入 EntityManager，供 BeanPostProcessor 在自定义子类上调用。
-     *
-     * @param entityManager JPA 实体管理器
-     */
-    public void setEntityManager(EntityManager entityManager) {
-        this.entityManager = entityManager;
+    protected void resolveIdFieldName() {
+        if (poClass != null) {
+            Field idField = findFieldWithAnnotation(poClass, Id.class);
+            if (idField != null) {
+                this.idFieldName = idField.getName();
+            }
+        }
     }
 
-    /**
-     * 注入 PO 实体类型，供 BeanPostProcessor 在自定义子类上调用。
-     *
-     * @param entityClass PO 实体类型
-     */
-    public void setEntityClass(Class<T> entityClass) {
-        this.entityClass = entityClass;
+    private Field findFieldWithAnnotation(Class<?> clazz, Class<?> annotationClass) {
+        for (Field field : clazz.getDeclaredFields()) {
+            if (field.isAnnotationPresent((Class<? extends java.lang.annotation.Annotation>) annotationClass)) {
+                return field;
+            }
+        }
+        if (clazz.getSuperclass() != null && clazz.getSuperclass() != Object.class) {
+            return findFieldWithAnnotation(clazz.getSuperclass(), annotationClass);
+        }
+        return null;
     }
 
-    /**
-     * 保存或更新实体。
-     * <p>
-     * 委托给 {@link EntityManager#merge(Object)}，由 JPA 根据实体主键自动判断新增或更新。
-     *
-     * @param entity 实体对象，为 null 或依赖未就绪时返回 null
-     * @return merge 后的实体实例（可能是新对象引用）
-     */
     @Override
-    public T save(T entity) {
-        if (entity == null || entityManager == null || entityClass == null) {
+    public Class<E> getEntityClass() {
+        return entityClass;
+    }
+
+    @Override
+    public Class<?> getPoClass() {
+        return poClass;
+    }
+
+    @Override
+    public Class<ID> getIdClass() {
+        return idClass;
+    }
+
+    @Override
+    public String getIdFieldName() {
+        return idFieldName;
+    }
+
+    @Override
+    public E save(E entity) {
+        if (entity == null || entityManager == null || poClass == null) {
             return null;
         }
-        T saved = entityManager.merge(entity);
-        log.debug("Saved entity: {}", saved);
-        return saved;
+        P po = toPo(entity);
+        P savedPo = entityManager.merge(po);
+        log.debug("Saved entity: {}", savedPo);
+        return toEntity(savedPo);
     }
 
-    /**
-     * 根据主键删除记录。
-     * <p>
-     * JPA 删除前必须先 find 出受管实体再 remove，无法直接按 ID 删除。
-     *
-     * @param id 主键值，为 null 时不执行任何操作
-     */
     @Override
     public void removeById(ID id) {
-        if (id != null) {
-            // JPA 删除需先加载受管实体再 remove
-            T entity = findById(id);
-            if (entity != null) {
-                entityManager.remove(entity);
+        if (id != null && entityManager != null && poClass != null) {
+            P po = entityManager.find(poClass, id);
+            if (po != null) {
+                entityManager.remove(po);
                 log.debug("Removed entity: id={}", id);
             }
         }
     }
 
-    /**
-     * 根据主键查询实体。
-     *
-     * @param id 主键值，为 null 时返回 null
-     * @return 实体对象，未找到时返回 null
-     */
     @Override
-    public T findById(ID id) {
-        if (id == null) {
+    public E findById(ID id) {
+        if (id == null || entityManager == null || poClass == null) {
             return null;
         }
-        T entity = entityManager.find(entityClass, id);
-        log.debug("Find by id: id={}, found={}", id, entity != null);
-        return entity;
+        P po = entityManager.find(poClass, id);
+        log.debug("Find by id: id={}, found={}", id, po != null);
+        return toEntity(po);
     }
 
-    /**
-     * 根据主键查询（与 findById 等价，语义上用于"读模型"）。
-     *
-     * @param id 主键值
-     * @return 实体对象，未找到时返回 null
-     */
     @Override
-    public T queryById(ID id) {
+    public E queryById(ID id) {
         return findById(id);
     }
 
-    /**
-     * 根据主键查询并以 {@link Optional} 包装返回。
-     *
-     * @param id 主键值
-     * @return 包含实体的 Optional，未找到时为 {@link Optional#empty()}
-     */
     @Override
-    public Optional<T> queryByIdOptional(ID id) {
-        return Optional.ofNullable(findById(id));
+    public Optional<E> queryByIdOptional(ID id) {
+        return Optional.ofNullable(queryById(id));
     }
 
-    /**
-     * 根据非空字段等值匹配查询单条记录。
-     * <p>
-     * 通过 Criteria API 构建等值条件，取结果集首条；多于一条时仅返回首条。
-     *
-     * @param condition 查询条件对象，为 null 时返回 null
-     * @return 首条匹配记录，无匹配时返回 null
-     */
     @Override
-    public T queryOne(T condition) {
+    public E queryOne(E condition) {
         if (condition == null) {
             return null;
         }
-        List<T> results = queryList(condition);
+        List<E> results = queryList(condition);
         return results.isEmpty() ? null : results.get(0);
     }
 
-    /**
-     * 根据条件查询单条记录，并以 {@link Optional} 包装返回。
-     *
-     * @param condition 查询条件对象
-     * @return 包含首条匹配记录的 Optional
-     */
     @Override
-    public Optional<T> queryOneOptional(T condition) {
+    public Optional<E> queryOneOptional(E condition) {
         return Optional.ofNullable(queryOne(condition));
     }
 
-    /**
-     * 根据条件查询列表。
-     * <p>
-     * 条件为 null 时查询全部；否则按非空字段构建 Criteria 等值条件。
-     *
-     * @param condition 查询条件对象，可为 null
-     * @return 匹配的实体列表，无匹配时返回空列表
-     */
     @Override
-    public List<T> queryList(T condition) {
+    public List<E> queryList(E condition) {
         if (condition == null) {
             return findAll();
         }
         return queryByCondition(condition);
     }
 
-    /**
-     * 分页查询（内存分页）。
-     * <p>
-     * <b>注意：JPA 不支持原生分页时使用内存分页</b>——先 findAll 取全量结果，
-     * 再按 subList 切片返回当前页。该实现适用于中小数据量；大数据量场景
-     * 建议用户自定义 Delegate 子类覆盖本方法，使用原生 SQL 分页。
-     *
-     * @param reqPage 分页请求（页码从 1 开始、每页大小，为 null 时取默认 1/10）
-     * @return 分页结果，含当前页、总页数、总条数、当前页记录
-     */
     @Override
-    public ResPage<T> queryPage(ReqPage reqPage) {
-        // JPA 页码从 0 开始，业务页码从 1 开始，需减 1 转换
+    public ResPage<E> queryPage(ReqPage reqPage) {
+        if (entityManager == null || poClass == null) {
+            ResPage<E> emptyPage = new ResPage<>();
+            emptyPage.setCurrent(1L);
+            emptyPage.setPages(0L);
+            emptyPage.setSize(10L);
+            emptyPage.setTotal(0L);
+            emptyPage.setRecords(List.of());
+            return emptyPage;
+        }
+
         int pageNum = reqPage.getPage() != null ? reqPage.getPage() - 1 : 0;
         int pageSize = reqPage.getSize() != null ? reqPage.getSize() : 10;
 
-        // 内存分页：先取全量再切片（大数据量场景应覆盖此方法）
-        List<T> allResults = findAll();
-        int start = pageNum * pageSize;
-        int end = Math.min(start + pageSize, allResults.size());
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
 
-        List<T> pageContent = start < allResults.size() ? allResults.subList(start, end) : List.of();
+        long total = executeCountQuery(cb);
 
-        ResPage<T> resPage = new ResPage<>();
-        // 返回业务侧时页码再加回 1
+        List<E> pageContent;
+        if (total > 0) {
+            CriteriaQuery<P> query = cb.createQuery(poClass);
+            query.from(poClass);
+
+            TypedQuery<P> typedQuery = entityManager.createQuery(query);
+            typedQuery.setFirstResult(pageNum * pageSize);
+            typedQuery.setMaxResults(pageSize);
+
+            pageContent = typedQuery.getResultList().stream()
+                    .map(this::toEntity)
+                    .collect(Collectors.toList());
+        } else {
+            pageContent = List.of();
+        }
+
+        ResPage<E> resPage = new ResPage<>();
         resPage.setCurrent((long) (pageNum + 1));
-        // 总页数向上取整
-        resPage.setPages((long) ((allResults.size() + pageSize - 1) / pageSize));
+        resPage.setPages(total > 0 ? (total + pageSize - 1) / pageSize : 0);
         resPage.setSize((long) pageSize);
-        resPage.setTotal((long) allResults.size());
+        resPage.setTotal(total);
         resPage.setRecords(pageContent);
 
         log.debug("Query page: page={}, size={}, total={}, records={}",
-                pageNum + 1, pageSize, allResults.size(), pageContent.size());
+                pageNum + 1, pageSize, total, pageContent.size());
         return resPage;
     }
 
-    /**
-     * 通过 Criteria API 查询全部实体。
-     *
-     * @return 全部实体列表
-     */
-    private List<T> findAll() {
-        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-        CriteriaQuery<T> query = cb.createQuery(entityClass);
-        query.from(entityClass);
-        return entityManager.createQuery(query).getResultList();
+    private long executeCountQuery(CriteriaBuilder cb) {
+        CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
+        countQuery.select(cb.count(countQuery.from(poClass)));
+        return entityManager.createQuery(countQuery).getSingleResult();
     }
 
-    /**
-     * 通过 Criteria API 按条件等值查询。
-     *
-     * @param condition 条件对象
-     * @return 匹配的实体列表
-     */
-    private List<T> queryByCondition(T condition) {
+    private List<E> findAll() {
+        if (entityManager == null || poClass == null) {
+            return List.of();
+        }
         CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-        CriteriaQuery<T> query = cb.createQuery(entityClass);
-        Root<T> root = query.from(entityClass);
+        CriteriaQuery<P> query = cb.createQuery(poClass);
+        query.from(poClass);
+        return entityManager.createQuery(query).getResultList().stream()
+                .map(this::toEntity)
+                .collect(Collectors.toList());
+    }
 
-        // 构建等值 Predicate 数组并拼接到 WHERE 子句
+    private List<E> queryByCondition(E condition) {
+        if (entityManager == null || poClass == null) {
+            return List.of();
+        }
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<P> query = cb.createQuery(poClass);
+        Root<P> root = query.from(poClass);
+
         Predicate[] predicates = buildPredicates(cb, root, condition);
         if (predicates.length > 0) {
             query.where(predicates);
         }
 
-        return entityManager.createQuery(query).getResultList();
+        return entityManager.createQuery(query).getResultList().stream()
+                .map(this::toEntity)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * 反射读取条件对象非空字段，构建等值 {@link Predicate} 数组。
-     *
-     * @param cb        CriteriaBuilder
-     * @param root       查询根
-     * @param condition 条件对象
-     * @return 等值 Predicate 数组
-     */
-    private Predicate[] buildPredicates(CriteriaBuilder cb, Root<T> root, T condition) {
+    private Predicate[] buildPredicates(CriteriaBuilder cb, Root<P> root, E condition) {
         List<Predicate> predicates = new java.util.ArrayList<>();
         try {
             Field[] fields = getAllFields(condition.getClass());
@@ -296,7 +273,6 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
                 field.setAccessible(true);
                 Object value = field.get(condition);
                 if (value != null) {
-                    // 直接以字段名作为属性路径，等值匹配
                     predicates.add(cb.equal(root.get(field.getName()), value));
                 }
             }
@@ -306,12 +282,6 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
         return predicates.toArray(new Predicate[0]);
     }
 
-    /**
-     * 收集类及其所有父类（直到 Object）的声明字段。
-     *
-     * @param clazz 起始类
-     * @return 全部字段数组
-     */
     private Field[] getAllFields(Class<?> clazz) {
         List<Field> fields = new java.util.ArrayList<>();
         while (clazz != null && clazz != Object.class) {
@@ -321,27 +291,18 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
         return fields.toArray(new Field[0]);
     }
 
-    /**
-     * 批量保存实体（逐条 merge）。
-     *
-     * @param entities 实体列表，为 null 或空时返回空列表
-     * @return merge 后的实体列表
-     */
     @Override
-    public List<T> saveBatch(List<T> entities) {
+    public List<E> saveBatch(List<E> entities) {
         if (entities == null || entities.isEmpty()) {
             return List.of();
         }
         return entities.stream()
+                .map(this::toPo)
                 .map(entityManager::merge)
-                .toList();
+                .map(this::toEntity)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * 根据主键列表批量删除（逐条 find + remove）。
-     *
-     * @param ids 主键列表，为 null 时不执行任何操作
-     */
     @Override
     public void removeBatchByIds(List<ID> ids) {
         if (ids != null) {
@@ -349,47 +310,81 @@ public class JpaRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
         }
     }
 
-    /**
-     * 根据主键列表批量查询（逐条 find 并过滤 null）。
-     *
-     * @param ids 主键列表，为 null 或空时返回空列表
-     * @return 匹配的实体列表
-     */
     @Override
-    public List<T> listByIds(List<ID> ids) {
-        if (ids == null || ids.isEmpty()) {
+    public List<E> listByIds(List<ID> ids) {
+        if (ids == null || ids.isEmpty() || entityManager == null || poClass == null) {
             return List.of();
         }
-        return ids.stream()
-                .map(this::findById)
-                .filter(java.util.Objects::nonNull)
-                .toList();
+
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<P> query = cb.createQuery(poClass);
+        Root<P> root = query.from(poClass);
+
+        query.where(root.get(idFieldName).in(ids));
+
+        return entityManager.createQuery(query).getResultList().stream()
+                .map(this::toEntity)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * 按条件统计记录数。
-     * <p>
-     * 当前实现通过查询结果列表的 size 计数（未走 COUNT 查询），适用于中小数据量。
-     *
-     * @param condition 条件对象，为 null 时统计全表
-     * @return 匹配的记录数
-     */
     @Override
-    public long count(T condition) {
-        if (condition == null) {
-            return findAll().size();
+    public long count(E condition) {
+        if (entityManager == null || poClass == null) {
+            return 0;
         }
-        return queryList(condition).size();
+
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+
+        if (condition == null) {
+            return executeCountQuery(cb);
+        }
+
+        CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
+        Root<P> root = countQuery.from(poClass);
+        countQuery.select(cb.count(root));
+
+        Predicate[] predicates = buildPredicates(cb, root, condition);
+        if (predicates.length > 0) {
+            countQuery.where(predicates);
+        }
+
+        return entityManager.createQuery(countQuery).getSingleResult();
     }
 
-    /**
-     * 判断是否存在匹配条件的记录。
-     *
-     * @param condition 条件对象
-     * @return 存在返回 true，否则 false
-     */
     @Override
-    public boolean exists(T condition) {
+    public boolean exists(E condition) {
         return count(condition) > 0;
+    }
+
+    protected E toEntity(P po) {
+        if (po == null) {
+            return null;
+        }
+        if (entityClass == null) {
+            return (E) po;
+        }
+        try {
+            E entity = entityClass.getDeclaredConstructor().newInstance();
+            BeanUtils.copyProperties(po, entity);
+            return entity;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert PO to entity", e);
+        }
+    }
+
+    protected P toPo(E entity) {
+        if (entity == null) {
+            return null;
+        }
+        if (poClass == null) {
+            return (P) entity;
+        }
+        try {
+            P po = poClass.getDeclaredConstructor().newInstance();
+            BeanUtils.copyProperties(entity, po);
+            return po;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert entity to PO", e);
+        }
     }
 }

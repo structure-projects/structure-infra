@@ -1,18 +1,16 @@
 package cn.structure.infra.repository;
 
-import cn.structure.infra.annotations.Repository;
-import cn.structure.infra.repository.RepositoryType;
 import lombok.Data;
-
-
 
 /**
  * 仓储定义元数据
  * <p>
- * 封装 @Repository 注解的配置信息
+ * 封装仓储的配置信息。
+ * <p>
+ * 注意：PO 类型已从 Facade 层移除，Entity ↔ PO 转换由 Delegate 实现负责。
  *
  * @author chuck
- * @version 1.0.1
+ * @version 1.0.2
  * @since 2026/6/28
  */
 @Data
@@ -32,11 +30,6 @@ public class RepositoryDefinition {
      * 实体类类型
      */
     private Class<?> entityClass;
-
-    /**
-     * PO持久化对象类型
-     */
-    private Class<?> poClass;
 
     /**
      * 主键类型
@@ -67,39 +60,12 @@ public class RepositoryDefinition {
     private Class<?> readDelegateClass;
 
     /**
-     * 原始注解
-     */
-    private Repository annotation;
-
-    /**
-     * 从注解构建仓储定义
-     *
-     * @param annotation @Repository注解实例
-     * @param beanName   Bean名称
-     * @return 仓储定义
-     */
-    public static RepositoryDefinition fromAnnotation(Repository annotation, String beanName) {
-        RepositoryDefinition definition = new RepositoryDefinition();
-        definition.setName(beanName);
-        definition.setType(annotation.type());
-        definition.setEntityClass(annotation.entity());
-        definition.setPoClass(annotation.po());
-        definition.setIdClass(annotation.id());
-        definition.setDescription(annotation.description());
-        definition.setCqrs(annotation.cqrs());
-        definition.setReadDelegateClass(annotation.readDelegateClass());
-        definition.setAnnotation(annotation);
-        return definition;
-    }
-
-    /**
      * 验证配置是否有效
      *
      * @return true if valid
      */
     public boolean isValid() {
-        return entityClass != null && entityClass != Object.class
-                && poClass != null && poClass != Object.class;
+        return entityClass != null && entityClass != Object.class;
     }
 
 }

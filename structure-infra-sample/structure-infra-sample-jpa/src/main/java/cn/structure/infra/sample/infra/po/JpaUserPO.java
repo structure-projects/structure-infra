@@ -1,24 +1,30 @@
 package cn.structure.infra.sample.infra.po;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 /**
- * 用户持久化对象（基础版本）
+ * 用户持久化对象（JPA 专用）
  * <p>
- * 仅包含基础字段定义，不包含任何框架特定的注解。
- * 各持久化技术模块应创建各自的专用 PO，继承或参考此类。
+ * JPA 框架专用的 PO，包含 JPA 注解。
  *
  * @author chuck
  * @version 1.0.2
  * @since 2026/6/28
  */
 @Data
-public class UserPO {
+@Entity
+@Table(name = "t_user")
+public class JpaUserPO {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String username;

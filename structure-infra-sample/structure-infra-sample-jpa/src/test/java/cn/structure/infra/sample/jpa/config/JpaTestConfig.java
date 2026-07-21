@@ -1,5 +1,7 @@
 package cn.structure.infra.sample.jpa.config;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
@@ -14,8 +16,6 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
 import java.util.Properties;
 
@@ -29,7 +29,10 @@ import java.util.Properties;
         "org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration",
         "org.springframework.boot.autoconfigure.cache.CacheAutoConfiguration",
         "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration",
-        "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration"
+        "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration",
+        "org.springframework.cloud.stream.config.BindingServiceConfiguration",
+        "org.springframework.cloud.stream.function.FunctionConfiguration",
+        "cn.structured.datascope.message.config.DataScopeMessageAutoConfiguration"
 })
 @ComponentScan(basePackages = {
         "cn.structure.infra.sample",
@@ -55,7 +58,7 @@ public class JpaTestConfig {
     public LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource dataSource) {
         LocalContainerEntityManagerFactoryBean em = new LocalContainerEntityManagerFactoryBean();
         em.setDataSource(dataSource);
-        em.setPackagesToScan("cn.structure.infra.sample.infra.po");
+        em.setPackagesToScan("cn.structure.infra.sample.infra.po", "cn.structure.infra.sample");
 
         HibernateJpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();
         em.setJpaVendorAdapter(vendorAdapter);

@@ -1,7 +1,7 @@
 package cn.structure.infra.sample.elasticsearch.config;
 
-import cn.structure.infra.lowcode.configuration.LowCodeAutoConfiguration;
 import cn.structure.infra.elasticsearch.lowcode.ElasticsearchLowCodeAutoConfiguration;
+import cn.structure.infra.lowcode.configuration.LowCodeAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 

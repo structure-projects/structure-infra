@@ -4,7 +4,6 @@ import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
 import cn.structure.infra.lowcode.repository.LowCodeRepository;
 import cn.structure.infra.sample.lowcode.LowCodeTestConfig;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

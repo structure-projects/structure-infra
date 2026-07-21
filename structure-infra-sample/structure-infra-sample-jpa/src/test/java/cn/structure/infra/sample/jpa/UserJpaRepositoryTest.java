@@ -1,10 +1,10 @@
 package cn.structure.infra.sample.jpa;
 
+import cn.structure.common.vo.ReqPage;
+import cn.structure.common.vo.ResPage;
 import cn.structure.infra.sample.domain.entity.UserEntity;
 import cn.structure.infra.sample.domain.repository.UserRepository;
 import cn.structure.infra.sample.jpa.config.JpaTestConfig;
-import cn.structure.common.vo.ReqPage;
-import cn.structure.common.vo.ResPage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

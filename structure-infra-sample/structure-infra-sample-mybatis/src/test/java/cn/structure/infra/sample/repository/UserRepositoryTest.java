@@ -1,9 +1,9 @@
 package cn.structure.infra.sample.repository;
 
-import cn.structure.infra.sample.domain.entity.UserEntity;
-import cn.structure.infra.sample.config.MybatisOnlyConfig;
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
+import cn.structure.infra.sample.config.MybatisOnlyConfig;
+import cn.structure.infra.sample.domain.entity.UserEntity;
 import cn.structure.infra.sample.domain.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

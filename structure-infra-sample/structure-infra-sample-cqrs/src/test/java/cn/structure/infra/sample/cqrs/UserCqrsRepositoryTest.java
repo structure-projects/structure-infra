@@ -1,14 +1,13 @@
 package cn.structure.infra.sample.cqrs;
 
-import cn.structure.infra.sample.cqrs.config.CqrsTestConfig;
-import cn.structure.infra.sample.cqrs.infra.delegate.write.UserWriteDelegate;
-import cn.structure.infra.sample.cqrs.infra.repositoory.UserCqrsRepository;
-import cn.structure.infra.repository.IQueryDelegate;
-import cn.structure.infra.sample.infra.po.UserPO;
-import cn.structure.infra.sample.domain.entity.UserEntity;
-import cn.structure.infra.sample.domain.repository.UserRepository;
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
+import cn.structure.infra.repository.IQueryDelegate;
+import cn.structure.infra.sample.cqrs.config.CqrsTestConfig;
+import cn.structure.infra.sample.cqrs.infra.delegate.write.UserWriteDelegate;
+import cn.structure.infra.sample.cqrs.infra.repository.UserCqrsRepository;
+import cn.structure.infra.sample.domain.entity.UserEntity;
+import cn.structure.infra.sample.domain.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,7 +19,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * CQRS 仓储测试类
@@ -97,7 +97,7 @@ class UserCqrsRepositoryTest {
         assertNotNull(userCqrsRepository, "CQRS 仓储应该被注入");
 
         // 验证 READ 代理存在
-        IQueryDelegate<UserPO, Long> readDelegate = userCqrsRepository.getReadDelegate();
+        IQueryDelegate<UserEntity, Long> readDelegate = userCqrsRepository.getReadDelegate();
         assertNotNull(readDelegate, "READ 读代理应该被注入");
         log.info("✓ READ 读代理注入成功: {}", readDelegate.getClass().getName());
     }
@@ -109,7 +109,7 @@ class UserCqrsRepositoryTest {
 
         // 验证同时加载了两种代理
         UserWriteDelegate baseDelegate = userCqrsRepository.getBaseDelegate();
-        IQueryDelegate<UserPO, Long> readDelegate = userCqrsRepository.getReadDelegate();
+        IQueryDelegate<UserEntity, Long> readDelegate = userCqrsRepository.getReadDelegate();
 
         assertNotNull(baseDelegate, "BASE 代理应该被加载");
         assertNotNull(readDelegate, "READ 代理应该被加载");

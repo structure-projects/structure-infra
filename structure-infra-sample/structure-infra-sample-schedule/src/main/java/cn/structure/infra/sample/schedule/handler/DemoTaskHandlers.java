@@ -1,6 +1,5 @@
 package cn.structure.infra.sample.schedule.handler;
 
-import cn.structure.infra.schedule.TaskHandler;
 import cn.structure.infra.schedule.TaskHandlerRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;

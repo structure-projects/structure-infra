@@ -45,6 +45,10 @@
             <groupId>cn.structured</groupId>
             <artifactId>structure-tenant-starter</artifactId>
         </dependency>
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+        </dependency>
     </dependencies>
 
 </project>

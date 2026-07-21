@@ -16,11 +16,13 @@ import java.util.stream.Collectors;
  * <p>
  * 基于 ConcurrentHashMap 实现的内存仓储，用于示例、测试和开发阶段
  * 支持基本的 CRUD、条件查询、分页查询
+ * <p>
+ * 注意：此实现直接操作领域实体（Entity），不涉及 PO 转换。
  *
- * @param <T>  实体类型
+ * @param <T>  实体类型（领域实体）
  * @param <ID> 主键类型
  * @author chuck
- * @version 1.0.1
+ * @version 1.0.2
  * @since 2026/6/28
  */
 @Slf4j
@@ -29,7 +31,17 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
     private final Map<ID, T> storage = new ConcurrentHashMap<>();
     private final AtomicLong idGenerator = new AtomicLong(1);
     private final Class<T> entityClass;
+    private final Class<ID> idClass;
     private final String idFieldName;
+
+    /**
+     * 默认构造函数（用于无参实例化场景）
+     */
+    public InMemoryRepositoryDelegate() {
+        this.entityClass = null;
+        this.idClass = null;
+        this.idFieldName = "id";
+    }
 
     /**
      * 构造内存仓储委托，默认主键字段名为 "id"
@@ -37,7 +49,7 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
      * @param entityClass 实体类型
      */
     public InMemoryRepositoryDelegate(Class<T> entityClass) {
-        this(entityClass, "id");
+        this(entityClass, null, "id");
     }
 
     /**
@@ -47,9 +59,21 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
      * @param idFieldName  主键字段名
      */
     public InMemoryRepositoryDelegate(Class<T> entityClass, String idFieldName) {
+        this(entityClass, null, idFieldName);
+    }
+
+    /**
+     * 构造内存仓储委托
+     *
+     * @param entityClass  实体类型
+     * @param idClass      主键类型
+     * @param idFieldName  主键字段名
+     */
+    public InMemoryRepositoryDelegate(Class<T> entityClass, Class<ID> idClass, String idFieldName) {
         this.entityClass = entityClass;
+        this.idClass = idClass;
         this.idFieldName = idFieldName;
-        log.info("InMemoryRepositoryDelegate initialized for entity: {}", entityClass.getSimpleName());
+        log.info("InMemoryRepositoryDelegate initialized for entity: {}", entityClass != null ? entityClass.getSimpleName() : "null");
     }
 
     /**
@@ -375,5 +399,25 @@ public class InMemoryRepositoryDelegate<T, ID> implements RepositoryDelegate<T, 
     @Override
     public boolean exists(T condition) {
         return count(condition) > 0;
+    }
+
+    @Override
+    public Class<T> getEntityClass() {
+        return entityClass;
+    }
+
+    @Override
+    public Class<?> getPoClass() {
+        return entityClass;
+    }
+
+    @Override
+    public Class<ID> getIdClass() {
+        return idClass;
+    }
+
+    @Override
+    public String getIdFieldName() {
+        return idFieldName;
     }
 }

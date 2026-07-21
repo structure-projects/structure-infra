@@ -32,11 +32,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-data-commons</artifactId>
         </dependency>
-        <dependency>
-            <groupId>cn.structured</groupId>
-            <artifactId>structure-infra-schedule-starter</artifactId>
-            <version>${revision}</version>
-        </dependency>
+
     </dependencies>
 
 </project>
