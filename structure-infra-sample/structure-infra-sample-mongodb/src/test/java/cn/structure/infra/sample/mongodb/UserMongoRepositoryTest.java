@@ -1,11 +1,11 @@
 package cn.structure.infra.sample.mongodb;
 
-import cn.structure.infra.sample.domain.entity.UserEntity;
-import cn.structure.infra.sample.domain.repository.UserRepository;
-import cn.structure.infra.sample.mongodb.config.MongoTestConfig;
-import cn.structure.infra.sample.mongodb.config.MockMongoConfiguration;
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
+import cn.structure.infra.sample.domain.entity.UserEntity;
+import cn.structure.infra.sample.domain.repository.UserRepository;
+import cn.structure.infra.sample.mongodb.config.MockMongoConfiguration;
+import cn.structure.infra.sample.mongodb.config.MongoTestConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

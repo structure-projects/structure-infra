@@ -102,7 +102,7 @@ spring:
 
 1. 检测 Bean 是否为 `ElasticsearchRepositoryDelegate` 实例
 2. 从 Spring 上下文获取 `ElasticsearchOperations` 并注入
-3. 读取 `@DelegateFor(po = XxxPO.class)` 注解，设置 `entityClass`
+3. 通过泛型解析设置 `entityClass`
 
 ### 2. 低代码仓储
 
@@ -166,14 +166,12 @@ public class UserPO {
 }
 
 // 2. 仓储接口
-public interface UserRepository extends Repository<UserEntity, String> {}
+public interface UserRepository extends ICrudRepository<UserEntity, String> {}
 
 // 3. 仓储实现，继承 RepositoryFacade
-@Repository(value = "用户仓储", type = RepositoryType.ELASTICSEARCH,
-            entity = UserEntity.class, po = UserPO.class)
-@Component
+@Component("userRepository")
 public class UserRepositoryImpl
-        extends RepositoryFacade<UserEntity, String, UserPO, UserRepositoryDelegate>
+        extends RepositoryFacade<UserEntity, String, UserRepositoryDelegate>
         implements UserRepository {
 
     // 未提供自定义 Delegate 时，框架会通过 ElasticsearchDelegateFactory 自动创建
@@ -183,10 +181,9 @@ public class UserRepositoryImpl
 ### 方式二：自定义 Delegate
 
 ```java
-@DelegateFor(po = UserPO.class)
 @Component
 public class UserElasticsearchRepositoryDelegate
-        extends ElasticsearchRepositoryDelegate<UserPO, String>
+        extends ElasticsearchRepositoryDelegate<UserEntity, UserPO, String>
         implements UserRepositoryDelegate {
 
     // 可覆写 queryOne/queryList 等方法实现自定义查询逻辑
@@ -250,18 +247,30 @@ structure:
 Elasticsearch 常作为读侧高速检索引擎，与 MyBatis Plus / MongoDB 组合实现 CQRS：
 
 ```java
-// 写操作走 MyBatis Plus，读操作走 Elasticsearch
-@Repository(value = "用户仓储", type = RepositoryType.MYBATIS_PLUS,
-            entity = UserEntity.class, po = UserPO.class,
-            readType = RepositoryType.ELASTICSEARCH,
-            readPo = UserPO.class)
+// 写代理（MyBatis Plus）
 @Component
-public class UserRepositoryImpl
-        extends RepositoryFacade<UserEntity, String, UserPO, UserRepositoryDelegate>
+@WriteDelegate
+public class UserWriteDelegate
+        extends MybatisPlusRepositoryDelegate<UserEntity, UserPO, String>
+        implements UserRepositoryDelegate {
+}
+
+// 读代理（Elasticsearch）
+@Component
+@ReadDelegate
+public class UserReadDelegate
+        extends ElasticsearchRepositoryDelegate<UserEntity, UserPO, String>
+        implements UserRepositoryDelegate {
+}
+
+// CQRS 仓储
+@Component("userCqrsRepository")
+public class UserCqrsRepository
+        extends CqrsRepositoryFacade<UserEntity, String, UserWriteDelegate, UserReadDelegate>
         implements UserRepository {
-    // 写操作 → MyBatis Plus Delegate（BASE）
-    // 读操作 → Elasticsearch Delegate（READ）
-    // 读失败自动回退到 BASE 代理
+    // 写操作 → UserWriteDelegate（MyBatis Plus）
+    // 读操作 → UserReadDelegate（Elasticsearch）
+    // 读失败自动回退到 UserWriteDelegate
 }
 ```
 

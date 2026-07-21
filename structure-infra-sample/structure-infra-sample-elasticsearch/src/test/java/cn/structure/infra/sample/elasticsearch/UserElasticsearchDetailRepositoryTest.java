@@ -1,11 +1,11 @@
 package cn.structure.infra.sample.elasticsearch;
 
+import cn.structure.common.vo.ReqPage;
+import cn.structure.common.vo.ResPage;
 import cn.structure.infra.sample.domain.entity.UserEntity;
 import cn.structure.infra.sample.domain.repository.UserRepository;
 import cn.structure.infra.sample.elasticsearch.config.ElasticsearchTestConfig;
 import cn.structure.infra.sample.elasticsearch.config.MockElasticsearchConfiguration;
-import cn.structure.common.vo.ReqPage;
-import cn.structure.common.vo.ResPage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

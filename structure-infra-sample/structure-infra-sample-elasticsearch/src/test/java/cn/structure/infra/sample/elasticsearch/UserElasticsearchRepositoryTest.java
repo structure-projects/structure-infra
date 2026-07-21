@@ -1,6 +1,5 @@
 package cn.structure.infra.sample.elasticsearch;
 
-import cn.structure.infra.sample.domain.entity.UserEntity;
 import cn.structure.infra.sample.domain.repository.UserRepository;
 import cn.structure.infra.sample.elasticsearch.config.ElasticsearchTestConfig;
 import org.junit.jupiter.api.DisplayName;
@@ -9,7 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest(classes = ElasticsearchTestConfig.class)
 @ActiveProfiles("es-test")

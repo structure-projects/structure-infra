@@ -118,6 +118,8 @@ public class StreamBindingBeanFactoryPostProcessor implements BeanFactoryPostPro
                 if (routeAnnotation != null) {
                     processStreamRouteHandler(routeAnnotation, defaultGroup, defaultContentType, defaultBinder, defaultConcurrency, properties, functionDefinitions);
                 }
+
+                
             }
 
             // 处理类级别的 @StreamEventListener 注解

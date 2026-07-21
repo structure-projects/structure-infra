@@ -15,6 +15,6 @@ import org.springframework.context.annotation.Configuration;
         "org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration"
 })
 @ComponentScan(basePackages = "cn.structure.infra.sample")
-@MapperScan("cn.structure.infra.sample.infra.repository.mybatis.mapper")
+@MapperScan("cn.structure.infra.sample.infra.mapper")
 public class TestConfig {
 }

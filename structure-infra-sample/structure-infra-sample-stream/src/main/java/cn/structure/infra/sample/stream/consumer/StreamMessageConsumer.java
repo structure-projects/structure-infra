@@ -12,7 +12,7 @@ import org.springframework.messaging.Message;
 
 import java.util.function.Consumer;
 
-@Configuration
+@Configuration(proxyBeanMethods = false)
 public class StreamMessageConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(StreamMessageConsumer.class);

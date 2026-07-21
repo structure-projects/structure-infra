@@ -2,12 +2,7 @@ package cn.structure.infra.sample.elasticsearch.lowcode;
 
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
-import cn.structure.infra.lowcode.model.AutoFillType;
-import cn.structure.infra.lowcode.model.FieldSchema;
-import cn.structure.infra.lowcode.model.FieldType;
-import cn.structure.infra.lowcode.model.RepositoryConfig;
-import cn.structure.infra.lowcode.model.ResourceSchema;
-import cn.structure.infra.lowcode.model.StorageType;
+import cn.structure.infra.lowcode.model.*;
 import cn.structure.infra.lowcode.repository.LowCodeRepository;
 import cn.structure.infra.lowcode.router.LowCodeRepositoryRouter;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,17 +23,14 @@ import org.springframework.data.elasticsearch.core.query.IndexQuery;
 import org.springframework.data.elasticsearch.core.query.Query;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Elasticsearch 低代码仓储测试 - 通过 LowCodeRepository 接口测试

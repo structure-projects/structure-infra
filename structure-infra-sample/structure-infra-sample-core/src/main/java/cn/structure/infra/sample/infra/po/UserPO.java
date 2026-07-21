@@ -1,25 +1,24 @@
 package cn.structure.infra.sample.infra.po;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import jakarta.persistence.*;
+import jakarta.persistence.Id;
 import lombok.Data;
-import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 
+/**
+ * 用户持久化对象（基础版本）
+ * <p>
+ * 仅包含基础字段定义，不包含任何框架特定的注解。
+ * 各持久化技术模块应创建各自的专用 PO，继承或参考此类。
+ *
+ * @author chuck
+ * @version 1.0.2
+ * @since 2026/6/28
+ */
 @Data
-@TableName("t_user")
-@Entity
-@Table(name = "t_user")
-@Document(collection = "t_user")
-@org.springframework.data.elasticsearch.annotations.Document(indexName = "t_user")
 public class UserPO {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @TableId(type = IdType.AUTO)
     private Long id;
 
     private String username;

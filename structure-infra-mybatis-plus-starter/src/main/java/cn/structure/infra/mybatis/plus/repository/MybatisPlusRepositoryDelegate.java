@@ -2,18 +2,23 @@ package cn.structure.infra.mybatis.plus.repository;
 
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
+import cn.structure.infra.repository.GenericTypeResolver;
 import cn.structure.infra.repository.RepositoryDelegate;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import jakarta.persistence.Id;
 import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * 基于 MyBatis Plus 的 RepositoryDelegate 适配实现
@@ -31,115 +36,104 @@ import java.util.Optional;
  * <ul>
  *   <li>查询条件通过反射读取实体非空字段，按"等值匹配"组装 {@link QueryWrapper}，并将驼峰字段名
  *       转为下划线列名以匹配数据库列</li>
- *   <li>ID 字段名默认为 "id"，可通过构造器或 setter 自定义</li>
+ *   <li>ID 字段名通过 PO 类的 {@link Id} 注解自动识别，默认为 "id"</li>
  *   <li>save 方法根据 ID 是否为空自动区分 insert / update</li>
  *   <li>分页委托给 MyBatis Plus 的 {@link Page}，由分页拦截器生成方言相关 SQL</li>
  * </ul>
+ * <p>
+ * 注意：Entity ↔ PO 转换在此层完成，Facade 层只操作领域实体。
  *
- * @param <T>  实体（PO）类型
+ * @param <E>  领域实体类型（Entity）
+ * @param <P>  持久化对象类型（PO）
  * @param <ID> 主键类型
  * @author chuck
- * @version 1.0.1
+ * @version 1.0.3
  * @since 2026/6/28
  */
 @Slf4j
-public class MybatisPlusRepositoryDelegate<T, ID> implements RepositoryDelegate<T, ID> {
+public class MybatisPlusRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID> {
 
-    /** 底层 MyBatis Plus Mapper，由工厂或 BeanPostProcessor 注入 */
-    protected BaseMapper<T> baseMapper;
-    /** PO 实体类型，用于反射读取字段 */
-    protected Class<T> entityClass;
-    /** 主键字段名，默认 "id"，可被子类覆盖 */
-    protected String idFieldName;
+    @Autowired
+    protected BaseMapper<P> baseMapper;
+    protected Class<E> entityClass;
+    protected Class<P> poClass;
+    protected Class<ID> idClass;
+    protected String idFieldName = "id";
 
-    /**
-     * 默认构造器，用于用户自定义子类场景。
-     * <p>
-     * 创建后由 {@link MybatisPlusDelegateBeanPostProcessor} 通过 setter 注入依赖。
-     */
     public MybatisPlusRepositoryDelegate() {
+        resolveGenericTypes();
+        resolveIdFieldName();
+        log.info("MybatisPlusRepositoryDelegate initialized: entity={}, po={}, id={}, idField={}",
+                entityClass != null ? entityClass.getSimpleName() : "null",
+                poClass != null ? poClass.getSimpleName() : "null",
+                idClass != null ? idClass.getSimpleName() : "null",
+                idFieldName);
     }
 
-    /**
-     * 以默认主键字段名 "id" 构造 Delegate。
-     *
-     * @param baseMapper  MyBatis Plus 的 BaseMapper，承担实际 CRUD
-     * @param entityClass PO 实体类型
-     */
-    public MybatisPlusRepositoryDelegate(BaseMapper<T> baseMapper, Class<T> entityClass) {
-        this(baseMapper, entityClass, "id");
+    @SuppressWarnings("unchecked")
+    protected void resolveGenericTypes() {
+        this.entityClass = (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
+        this.poClass = (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
+        this.idClass = (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
     }
 
-    /**
-     * 全参构造器，工厂自动创建场景使用。
-     *
-     * @param baseMapper  MyBatis Plus 的 BaseMapper
-     * @param entityClass PO 实体类型
-     * @param idFieldName 主键字段名（用于反射读取 ID 值）
-     */
-    public MybatisPlusRepositoryDelegate(BaseMapper<T> baseMapper, Class<T> entityClass, String idFieldName) {
-        this.baseMapper = baseMapper;
-        this.entityClass = entityClass;
-        this.idFieldName = idFieldName;
-        log.info("MybatisPlusRepositoryDelegate initialized for entity: {}", entityClass.getSimpleName());
+    protected void resolveIdFieldName() {
+        if (poClass != null) {
+            Field idField = findFieldWithAnnotation(poClass, Id.class);
+            if (idField != null) {
+                this.idFieldName = idField.getName();
+            }
+        }
     }
 
-    /**
-     * 注入 BaseMapper，供 BeanPostProcessor 在自定义子类上调用。
-     *
-     * @param baseMapper MyBatis Plus 的 BaseMapper
-     */
-    public void setBaseMapper(BaseMapper<T> baseMapper) {
-        this.baseMapper = baseMapper;
+    private Field findFieldWithAnnotation(Class<?> clazz, Class<?> annotationClass) {
+        for (Field field : clazz.getDeclaredFields()) {
+            if (field.isAnnotationPresent((Class<? extends java.lang.annotation.Annotation>) annotationClass)) {
+                return field;
+            }
+        }
+        if (clazz.getSuperclass() != null && clazz.getSuperclass() != Object.class) {
+            return findFieldWithAnnotation(clazz.getSuperclass(), annotationClass);
+        }
+        return null;
     }
 
-    /**
-     * 注入 PO 实体类型，供 BeanPostProcessor 在自定义子类上调用。
-     *
-     * @param entityClass PO 实体类型
-     */
-    public void setEntityClass(Class<T> entityClass) {
-        this.entityClass = entityClass;
-    }
-
-    /**
-     * 设置主键字段名，供自定义子类覆盖默认 "id"。
-     *
-     * @param idFieldName 主键字段名
-     */
-    public void setIdFieldName(String idFieldName) {
-        this.idFieldName = idFieldName;
-    }
-
-    /**
-     * 保存或更新实体。
-     * <p>
-     * 根据 ID 字段值是否为空自动选择策略：ID 为空执行 insert，否则执行 updateById。
-     *
-     * @param entity 实体对象，为 null 时直接返回 null
-     * @return 保存后的实体（与入参同一引用）
-     */
     @Override
-    public T save(T entity) {
+    public Class<E> getEntityClass() {
+        return entityClass;
+    }
+
+    @Override
+    public Class<?> getPoClass() {
+        return poClass;
+    }
+
+    @Override
+    public Class<ID> getIdClass() {
+        return idClass;
+    }
+
+    @Override
+    public String getIdFieldName() {
+        return idFieldName;
+    }
+
+    @Override
+    public E save(E entity) {
         if (entity == null) {
             return null;
         }
-        // 反射读取主键值，决定走新增还是更新分支
-        ID id = getIdValue(entity);
+        P po = toPo(entity);
+        ID id = getIdValue(po);
         if (id == null) {
-            baseMapper.insert(entity);
+            baseMapper.insert(po);
         } else {
-            baseMapper.updateById(entity);
+            baseMapper.updateById(po);
         }
         log.debug("Saved entity: id={}, entity={}", id, entity);
-        return entity;
+        return toEntity(po);
     }
 
-    /**
-     * 根据主键删除记录。
-     *
-     * @param id 主键值，为 null 时不执行任何操作
-     */
     @Override
     public void removeById(ID id) {
         if (id != null) {
@@ -148,137 +142,128 @@ public class MybatisPlusRepositoryDelegate<T, ID> implements RepositoryDelegate<
         }
     }
 
-    /**
-     * 根据主键查询实体。
-     *
-     * @param id 主键值，为 null 时返回 null
-     * @return 实体对象，未找到时返回 null
-     */
     @Override
-    public T findById(ID id) {
+    public E findById(ID id) {
         if (id == null) {
             return null;
         }
-        T entity = baseMapper.selectById((Serializable) id);
-        log.debug("Find by id: id={}, found={}", id, entity != null);
-        return entity;
+        P po = baseMapper.selectById((Serializable) id);
+        log.debug("Find by id: id={}, found={}", id, po != null);
+        return toEntity(po);
     }
 
-    /**
-     * 根据主键查询（与 findById 等价，语义上用于"读模型"）。
-     *
-     * @param id 主键值
-     * @return 实体对象，未找到时返回 null
-     */
     @Override
-    public T queryById(ID id) {
+    public E queryById(ID id) {
         return findById(id);
     }
 
-    /**
-     * 根据主键查询并以 {@link Optional} 包装返回，避免空指针。
-     *
-     * @param id 主键值
-     * @return 包含实体的 Optional，未找到时为 {@link Optional#empty()}
-     */
     @Override
-    public Optional<T> queryByIdOptional(ID id) {
+    public Optional<E> queryByIdOptional(ID id) {
         return Optional.ofNullable(queryById(id));
     }
 
-    /**
-     * 根据非空字段等值匹配查询单条记录。
-     * <p>
-     * 将条件对象非空字段组装为 {@link QueryWrapper}，取结果集第一条；多于一条时仅返回首条。
-     *
-     * @param condition 查询条件对象，为 null 时返回 null
-     * @return 首条匹配记录，无匹配时返回 null
-     */
     @Override
-    public T queryOne(T condition) {
+    public E queryOne(E condition) {
         if (condition == null) {
             return null;
         }
-        QueryWrapper<T> queryWrapper = buildQueryWrapper(condition);
-        List<T> results = baseMapper.selectList(queryWrapper);
-        return results.isEmpty() ? null : results.get(0);
+        P poCondition = toPo(condition);
+        QueryWrapper<P> queryWrapper = buildQueryWrapper(poCondition);
+        List<P> results = baseMapper.selectList(queryWrapper);
+        P po = results.isEmpty() ? null : results.get(0);
+        return toEntity(po);
     }
 
-    /**
-     * 根据条件查询单条记录，并以 {@link Optional} 包装返回。
-     *
-     * @param condition 查询条件对象
-     * @return 包含首条匹配记录的 Optional
-     */
     @Override
-    public Optional<T> queryOneOptional(T condition) {
+    public Optional<E> queryOneOptional(E condition) {
         return Optional.ofNullable(queryOne(condition));
     }
 
-    /**
-     * 根据条件查询列表。
-     * <p>
-     * 条件为 null 时等价于全表查询；否则按非空字段等值匹配。
-     *
-     * @param condition 查询条件对象，可为 null
-     * @return 匹配的实体列表，无匹配时返回空列表
-     */
     @Override
-    public List<T> queryList(T condition) {
+    public List<E> queryList(E condition) {
         if (condition == null) {
-            return baseMapper.selectList(null);
+            List<P> poList = baseMapper.selectList(null);
+            return toEntityList(poList);
         }
-        QueryWrapper<T> queryWrapper = buildQueryWrapper(condition);
-        return baseMapper.selectList(queryWrapper);
+        P poCondition = toPo(condition);
+        QueryWrapper<P> queryWrapper = buildQueryWrapper(poCondition);
+        List<P> poList = baseMapper.selectList(queryWrapper);
+        return toEntityList(poList);
     }
 
-    /**
-     * 分页查询。
-     * <p>
-     * 委托 MyBatis Plus 的 {@link Page} 执行分页，实际分页 SQL 由分页拦截器按方言生成。
-     *
-     * @param reqPage 分页请求（页码、每页大小，为 null 时取默认 1/10）
-     * @return 分页结果，包含当前页、总页数、总条数、当前页记录
-     */
     @Override
-    public ResPage<T> queryPage(ReqPage reqPage) {
-        // 页码与每页大小兜底，避免 NPE
+    public ResPage<E> queryPage(ReqPage reqPage) {
         long pageNum = reqPage.getPage() != null ? reqPage.getPage() : 1;
         long pageSize = reqPage.getSize() != null ? reqPage.getSize() : 10;
 
-        Page<T> page = new Page<>(pageNum, pageSize);
-        IPage<T> result = baseMapper.selectPage(page, null);
+        Page<P> page = new Page<>(pageNum, pageSize);
+        IPage<P> result = baseMapper.selectPage(page, null);
 
-        // 将 MyBatis Plus 分页结果转写为统一 ResPage
-        ResPage<T> resPage = new ResPage<>();
+        ResPage<E> resPage = new ResPage<>();
         resPage.setCurrent(result.getCurrent());
         resPage.setPages(result.getPages());
         resPage.setSize(result.getSize());
         resPage.setTotal(result.getTotal());
-        resPage.setRecords(result.getRecords());
+        resPage.setRecords(toEntityList(result.getRecords()));
 
         log.debug("Query page: page={}, size={}, total={}, records={}",
                 pageNum, pageSize, result.getTotal(), result.getRecords().size());
         return resPage;
     }
 
-    /**
-     * 根据条件对象的非空字段构建等值查询 {@link QueryWrapper}。
-     * <p>
-     * 反射读取所有字段（含父类），将驼峰字段名转为下划线列名后拼接 eq 条件。
-     *
-     * @param condition 条件对象
-     * @return 已填充等值条件的 QueryWrapper
-     */
-    private QueryWrapper<T> buildQueryWrapper(T condition) {
-        QueryWrapper<T> queryWrapper = new QueryWrapper<>();
+    @Override
+    public List<E> saveBatch(List<E> entities) {
+        if (entities == null || entities.isEmpty()) {
+            return List.of();
+        }
+        List<P> poList = toPoList(entities);
+        poList.forEach(baseMapper::insert);
+        return toEntityList(poList);
+    }
+
+    @Override
+    public void removeBatchByIds(List<ID> ids) {
+        if (ids != null && !ids.isEmpty()) {
+            baseMapper.deleteBatchIds(ids.stream()
+                    .map(id -> (Serializable) id)
+                    .toList());
+        }
+    }
+
+    @Override
+    public List<E> listByIds(List<ID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<P> poList = baseMapper.selectBatchIds(ids.stream()
+                .map(id -> (Serializable) id)
+                .toList());
+        return toEntityList(poList);
+    }
+
+    @Override
+    public long count(E condition) {
+        if (condition == null) {
+            return baseMapper.selectCount(null);
+        }
+        P poCondition = toPo(condition);
+        QueryWrapper<P> queryWrapper = buildQueryWrapper(poCondition);
+        return baseMapper.selectCount(queryWrapper);
+    }
+
+    @Override
+    public boolean exists(E condition) {
+        return count(condition) > 0;
+    }
+
+    private QueryWrapper<P> buildQueryWrapper(P condition) {
+        QueryWrapper<P> queryWrapper = new QueryWrapper<>();
         try {
             Field[] fields = getAllFields(condition.getClass());
             for (Field field : fields) {
                 field.setAccessible(true);
                 Object value = field.get(condition);
                 if (value != null) {
-                    // 字段名驼峰转下划线，以匹配数据库列名
                     queryWrapper.eq(camelToUnderline(field.getName()), value);
                 }
             }
@@ -288,12 +273,6 @@ public class MybatisPlusRepositoryDelegate<T, ID> implements RepositoryDelegate<
         return queryWrapper;
     }
 
-    /**
-     * 收集类及其所有父类（直到 Object）的声明字段。
-     *
-     * @param clazz 起始类
-     * @return 全部字段数组
-     */
     private Field[] getAllFields(Class<?> clazz) {
         List<Field> fields = new java.util.ArrayList<>();
         while (clazz != null && clazz != Object.class) {
@@ -303,19 +282,13 @@ public class MybatisPlusRepositoryDelegate<T, ID> implements RepositoryDelegate<
         return fields.toArray(new Field[0]);
     }
 
-    /**
-     * 反射读取实体的主键字段值。
-     *
-     * @param entity 实体对象
-     * @return 主键值，无法读取时返回 null
-     */
     @SuppressWarnings("unchecked")
-    private ID getIdValue(T entity) {
+    private ID getIdValue(P po) {
         try {
-            Field field = findIdField(entity.getClass());
+            Field field = findIdField(po.getClass());
             if (field != null) {
                 field.setAccessible(true);
-                return (ID) field.get(entity);
+                return (ID) field.get(po);
             }
         } catch (Exception e) {
             log.warn("Error getting id value: {}", e.getMessage());
@@ -323,18 +296,11 @@ public class MybatisPlusRepositoryDelegate<T, ID> implements RepositoryDelegate<
         return null;
     }
 
-    /**
-     * 沿继承链递归查找主键字段。
-     *
-     * @param clazz 起始类
-     * @return 主键 Field，未找到返回 null
-     */
     private Field findIdField(Class<?> clazz) {
         try {
             Field field = clazz.getDeclaredField(idFieldName);
             return field;
         } catch (NoSuchFieldException e) {
-            // 当前类未声明 ID 字段，继续向父类递归
             if (clazz.getSuperclass() != null && clazz.getSuperclass() != Object.class) {
                 return findIdField(clazz.getSuperclass());
             }
@@ -342,12 +308,6 @@ public class MybatisPlusRepositoryDelegate<T, ID> implements RepositoryDelegate<
         }
     }
 
-    /**
-     * 驼峰命名转下划线命名（如 userName → user_name），用于对齐数据库列名。
-     *
-     * @param param 原始字段名
-     * @return 下划线命名，入参为空时返回空字符串
-     */
     private String camelToUnderline(String param) {
         if (param == null || "".equals(param.trim())) {
             return "";
@@ -366,74 +326,47 @@ public class MybatisPlusRepositoryDelegate<T, ID> implements RepositoryDelegate<
         return sb.toString();
     }
 
-    /**
-     * 批量保存实体（逐条 insert）。
-     *
-     * @param entities 实体列表，为 null 或空时返回空列表
-     * @return 入参列表引用（已写入数据库）
-     */
-    @Override
-    public List<T> saveBatch(List<T> entities) {
-        if (entities == null || entities.isEmpty()) {
+    protected E toEntity(P po) {
+        if (po == null) {
+            return null;
+        }
+        try {
+            E entity = entityClass.getDeclaredConstructor().newInstance();
+            BeanUtils.copyProperties(po, entity);
+            return entity;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert PO to entity", e);
+        }
+    }
+
+    protected List<E> toEntityList(List<P> poList) {
+        if (poList == null || poList.isEmpty()) {
             return List.of();
         }
-        entities.forEach(baseMapper::insert);
-        return entities;
+        return poList.stream()
+                .map(this::toEntity)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * 根据主键列表批量删除。
-     *
-     * @param ids 主键列表，为 null 或空时不执行任何操作
-     */
-    @Override
-    public void removeBatchByIds(List<ID> ids) {
-        if (ids != null && !ids.isEmpty()) {
-            baseMapper.deleteBatchIds(ids.stream()
-                    .map(id -> (Serializable) id)
-                    .toList());
+    protected P toPo(E entity) {
+        if (entity == null) {
+            return null;
+        }
+        try {
+            P po = poClass.getDeclaredConstructor().newInstance();
+            BeanUtils.copyProperties(entity, po);
+            return po;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert entity to PO", e);
         }
     }
 
-    /**
-     * 根据主键列表批量查询。
-     *
-     * @param ids 主键列表，为 null 或空时返回空列表
-     * @return 匹配的实体列表
-     */
-    @Override
-    public List<T> listByIds(List<ID> ids) {
-        if (ids == null || ids.isEmpty()) {
+    protected List<P> toPoList(List<E> entityList) {
+        if (entityList == null || entityList.isEmpty()) {
             return List.of();
         }
-        return baseMapper.selectBatchIds(ids.stream()
-                .map(id -> (Serializable) id)
-                .toList());
-    }
-
-    /**
-     * 按条件统计记录数。
-     *
-     * @param condition 条件对象，为 null 时统计全表
-     * @return 匹配的记录数
-     */
-    @Override
-    public long count(T condition) {
-        if (condition == null) {
-            return baseMapper.selectCount(null);
-        }
-        QueryWrapper<T> queryWrapper = buildQueryWrapper(condition);
-        return baseMapper.selectCount(queryWrapper);
-    }
-
-    /**
-     * 判断是否存在匹配条件的记录。
-     *
-     * @param condition 条件对象
-     * @return 存在返回 true，否则 false
-     */
-    @Override
-    public boolean exists(T condition) {
-        return count(condition) > 0;
+        return entityList.stream()
+                .map(this::toPo)
+                .collect(Collectors.toList());
     }
 }

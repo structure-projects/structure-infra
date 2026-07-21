@@ -5,14 +5,18 @@ import cn.structure.infra.stream.properties.StreamProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.stream.function.StreamBridge;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.Expression;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -52,6 +56,10 @@ public class DefaultStreamEventManagerImpl implements StreamEventManager {
      */
     private final StreamProperties streamProperties;
     /**
+     * Spring 配置环境，用于动态注册 Spring Cloud Stream binding 配置。
+     */
+    private final ConfigurableEnvironment environment;
+    /**
      * 监听器注册表：bindingName → 该 binding 下的所有监听器注册信息列表。
      */
     private final Map<String, List<ListenerRegistration<?>>> registeredListeners = new ConcurrentHashMap<>();
@@ -59,16 +67,27 @@ public class DefaultStreamEventManagerImpl implements StreamEventManager {
      * SpEL 表达式解析器，用于对监听器的 condition 进行求值。
      */
     private final SpelExpressionParser expressionParser = new SpelExpressionParser();
+    /**
+     * Spring Cloud Stream binding 配置前缀。
+     */
+    private static final String SPRING_BINDINGS_PREFIX = "spring.cloud.stream.bindings";
+    /**
+     * 动态 binding 属性源名称。
+     */
+    private static final String DYNAMIC_BINDING_PROPERTY_SOURCE = "stream-dynamic-binding";
 
     /**
      * 构造方法，由 {@code StreamAutoConfiguration} 注入依赖。
      *
      * @param streamBridge     Spring Cloud Stream 桥接器
      * @param streamProperties stream 主配置
+     * @param environment      Spring 配置环境
      */
-    public DefaultStreamEventManagerImpl(StreamBridge streamBridge, StreamProperties streamProperties) {
+    public DefaultStreamEventManagerImpl(StreamBridge streamBridge, StreamProperties streamProperties,
+                                          ConfigurableEnvironment environment) {
         this.streamBridge = streamBridge;
         this.streamProperties = streamProperties;
+        this.environment = environment;
     }
 
     /**
@@ -104,19 +123,16 @@ public class DefaultStreamEventManagerImpl implements StreamEventManager {
      * <p>实现说明：
      * <ol>
      *   <li>调用 {@link #ensureBindingRegistered} 保证 binding 已注册（动态 binding 注册）</li>
-     *   <li>构建 {@link Message}，通过 {@link StreamBridge#send} 投递到 <code>{bindingName}-out-0</code> 输出通道</li>
+     *   <li>构建 {@link Message}，通过 {@link StreamBridge#send} 直接投递到指定的 destination</li>
      * </ol>
      */
     @Override
     public <T> void publish(String bindingName, String destination, String group, T event) {
-        // 动态 binding 注册：若 binding 缺失则补注册，确保 publish 链路可用
         ensureBindingRegistered(bindingName, destination, group);
 
-        // Spring Cloud Stream 约定：输出 binding 名为 {bindingName}-out-0
-        String outputBindingName = bindingName + "-out-0";
         Message<T> message = MessageBuilder.withPayload(event).build();
-        streamBridge.send(outputBindingName, message);
-        log.debug("Published event to binding: {}, destination: {}, group: {}", outputBindingName, destination, group);
+        streamBridge.send(destination, message);
+        log.debug("Published event to destination: {}, bindingName: {}, group: {}", destination, bindingName, group);
     }
 
     /**
@@ -293,6 +309,7 @@ public class DefaultStreamEventManagerImpl implements StreamEventManager {
      *
      * <p>实现说明：使用 synchronized 保证并发注册的幂等性，已存在时仅打印告警并返回。
      * contentType/concurrency 为 null 时分别回退到全局默认值。
+     * 同时注册 Spring Cloud Stream binding 配置到 Environment，确保 StreamBridge 能找到正确的 destination。
      */
     @Override
     public void registerBinding(String bindingName, String destination, String group, String contentType, Integer concurrency) {
@@ -311,9 +328,69 @@ public class DefaultStreamEventManagerImpl implements StreamEventManager {
 
             streamProperties.getBindings().put(bindingName, binding);
 
+            // 注册 Spring Cloud Stream binding 配置到 Environment
+            registerCloudStreamBinding(bindingName, destination, group, binding.getContentType(), binding.getConcurrency());
+
             log.info("Dynamically registered binding: {}, destination: {}, group: {}, contentType: {}",
                     bindingName, destination, group, binding.getContentType());
         }
+    }
+
+    /**
+     * 将 binding 配置注册到 Spring Cloud Stream 的 Environment，确保 StreamBridge 发送消息时能找到正确的 destination。
+     *
+     * @param bindingName 绑定名称
+     * @param destination 目标 destination（exchange/topic）
+     * @param group       消费者组
+     * @param contentType 内容类型
+     * @param concurrency 消费并发数
+     */
+    private void registerCloudStreamBinding(String bindingName, String destination, String group,
+                                            String contentType, Integer concurrency) {
+        String inputBinding = bindingName + "-in-0";
+        String outputBinding = bindingName + "-out-0";
+
+        String inputDestKey = SPRING_BINDINGS_PREFIX + "." + inputBinding + ".destination";
+        String outputDestKey = SPRING_BINDINGS_PREFIX + "." + outputBinding + ".destination";
+        
+        // 检查是否已存在配置（避免覆盖已有的显式配置）
+        if (environment.containsProperty(outputDestKey)) {
+            log.debug("Cloud Stream binding already configured: {}", outputDestKey);
+            return;
+        }
+
+        Map<String, Object> props = new LinkedHashMap<>();
+        
+        // 注册 input/output binding 的 destination
+        props.put(inputDestKey, destination);
+        props.put(SPRING_BINDINGS_PREFIX + "." + outputBinding + ".destination", destination);
+        
+        // 注册 content-type
+        props.put(SPRING_BINDINGS_PREFIX + "." + inputBinding + ".content-type", contentType);
+        props.put(SPRING_BINDINGS_PREFIX + "." + outputBinding + ".content-type", contentType);
+        
+        // 注册 group（仅 input binding 需要）
+        if (StringUtils.hasText(group)) {
+            props.put(SPRING_BINDINGS_PREFIX + "." + inputBinding + ".group", group);
+        }
+        
+        // 注册 concurrency（仅 input binding 需要）
+        if (concurrency != null) {
+            props.put(SPRING_BINDINGS_PREFIX + "." + inputBinding + ".consumer.concurrency", concurrency);
+        }
+
+        // 获取或创建动态 binding 属性源
+        MapPropertySource propertySource = (MapPropertySource) environment.getPropertySources().get(DYNAMIC_BINDING_PROPERTY_SOURCE);
+        if (propertySource == null) {
+            propertySource = new MapPropertySource(DYNAMIC_BINDING_PROPERTY_SOURCE, new LinkedHashMap<>());
+            environment.getPropertySources().addFirst(propertySource);
+        }
+
+        // 将配置写入属性源
+        propertySource.getSource().putAll(props);
+
+        log.info("Registered Cloud Stream binding: {}, destination: {}, group: {}",
+                bindingName, destination, group);
     }
 
     /**

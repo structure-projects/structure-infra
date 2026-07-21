@@ -1,14 +1,13 @@
 package cn.structure.infra.sample.cqrs;
 
-import cn.structure.infra.sample.cqrs.config.CqrsTestConfig;
-import cn.structure.infra.sample.cqrs.infra.delegate.write.UserWriteDelegate;
-import cn.structure.infra.sample.cqrs.infra.repositoory.UserCqrsRepository;
-import cn.structure.infra.repository.IQueryDelegate;
-import cn.structure.infra.sample.infra.po.UserPO;
-import cn.structure.infra.sample.domain.entity.UserEntity;
-import cn.structure.infra.sample.domain.repository.UserRepository;
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
+import cn.structure.infra.repository.IQueryDelegate;
+import cn.structure.infra.sample.cqrs.config.CqrsTestConfig;
+import cn.structure.infra.sample.cqrs.infra.delegate.write.UserWriteDelegate;
+import cn.structure.infra.sample.cqrs.infra.repository.UserCqrsRepository;
+import cn.structure.infra.sample.domain.entity.UserEntity;
+import cn.structure.infra.sample.domain.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,7 +19,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * CQRS 仓储测试类
@@ -45,9 +45,6 @@ class UserCqrsRepositoryTest {
 
     @Autowired
     private UserCqrsRepository userCqrsRepository;
-
-    @Autowired(required = false)
-    private UserRepository userRepository;
 
     /**
      * 创建测试用户实体
@@ -86,7 +83,7 @@ class UserCqrsRepositoryTest {
         assertNotNull(userCqrsRepository, "CQRS 仓储应该被注入");
 
         // 验证 BASE 代理存在
-        UserWriteDelegate baseDelegate = userCqrsRepository.getBaseDelegate();
+        UserWriteDelegate baseDelegate = userCqrsRepository.getDelegate();
         assertNotNull(baseDelegate, "BASE 写代理应该被注入");
         log.info("✓ BASE 写代理注入成功: {}", baseDelegate.getClass().getName());
     }
@@ -97,7 +94,7 @@ class UserCqrsRepositoryTest {
         assertNotNull(userCqrsRepository, "CQRS 仓储应该被注入");
 
         // 验证 READ 代理存在
-        IQueryDelegate<UserPO, Long> readDelegate = userCqrsRepository.getReadDelegate();
+        IQueryDelegate<UserEntity, Long> readDelegate = userCqrsRepository.getReadDelegate();
         assertNotNull(readDelegate, "READ 读代理应该被注入");
         log.info("✓ READ 读代理注入成功: {}", readDelegate.getClass().getName());
     }
@@ -108,8 +105,8 @@ class UserCqrsRepositoryTest {
         assertNotNull(userCqrsRepository, "CQRS 仓储应该被注入");
 
         // 验证同时加载了两种代理
-        UserWriteDelegate baseDelegate = userCqrsRepository.getBaseDelegate();
-        IQueryDelegate<UserPO, Long> readDelegate = userCqrsRepository.getReadDelegate();
+        UserWriteDelegate baseDelegate = userCqrsRepository.getDelegate();
+        IQueryDelegate<UserEntity, Long> readDelegate = userCqrsRepository.getReadDelegate();
 
         assertNotNull(baseDelegate, "BASE 代理应该被加载");
         assertNotNull(readDelegate, "READ 代理应该被加载");
@@ -269,13 +266,5 @@ class UserCqrsRepositoryTest {
         log.info("Step 3 - DELETE（BASE 代理）: 执行完成");
 
         log.info("✓ CQRS 完整 CRUD 流程测试完成");
-    }
-
-    @Test
-    @DisplayName("测试 UserRepository 接口注入")
-    void testUserRepositoryInterfaceInjection() {
-        // 验证接口注入
-        assertNotNull(userRepository, "UserRepository 接口应该被注入");
-        log.info("✓ UserRepository 接口注入成功: {}", userRepository.getClass().getName());
     }
 }

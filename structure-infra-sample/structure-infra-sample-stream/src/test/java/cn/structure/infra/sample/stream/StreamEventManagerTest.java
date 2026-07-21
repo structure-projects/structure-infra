@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.cloud.stream.function.StreamBridge;
+import org.springframework.core.env.ConfigurableEnvironment;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -36,7 +37,8 @@ public class StreamEventManagerTest {
         streamProperties.getBindings().put("paymentEvent", paymentBinding);
 
         StreamBridge mockStreamBridge = mock(StreamBridge.class);
-        streamEventManager = new DefaultStreamEventManagerImpl(mockStreamBridge, streamProperties);
+        ConfigurableEnvironment mockEnvironment = mock(ConfigurableEnvironment.class);
+        streamEventManager = new DefaultStreamEventManagerImpl(mockStreamBridge, streamProperties, mockEnvironment);
     }
 
     @Test

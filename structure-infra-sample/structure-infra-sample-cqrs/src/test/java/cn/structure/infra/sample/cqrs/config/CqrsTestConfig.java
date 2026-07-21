@@ -1,6 +1,6 @@
 package cn.structure.infra.sample.cqrs.config;
 
-import cn.structure.infra.elasticsearch.repository.ElasticsearchDelegateBeanPostProcessor;
+
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
@@ -45,7 +45,8 @@ import org.springframework.context.annotation.Import;
 })
 @ComponentScan(basePackages = {
         "cn.structure.infra.sample.cqrs",
-        "cn.structure.infra.sample.infra",
+        "cn.structure.infra.sample.infra.po",
+        "cn.structure.infra.sample.infra.mapper",
         "cn.structure.infra.repository",
         "cn.structure.infra.mybatis.plus",
         "cn.structure.infra.elasticsearch"
@@ -70,18 +71,5 @@ public class CqrsTestConfig {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
         interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.H2));
         return interceptor;
-    }
-
-    /**
-     * Elasticsearch 委托 Bean 后处理器
-     * <p>
-     * 显式注册，确保 Mock 环境下 ElasticsearchOperations 能正确注入到 Delegate 中。
-     * 由于测试环境下 @ConditionalOnBean 可能因注册顺序问题不满足，因此手动注册。
-     *
-     * @return ElasticsearchDelegateBeanPostProcessor 实例
-     */
-    @Bean
-    public ElasticsearchDelegateBeanPostProcessor elasticsearchDelegateBeanPostProcessor() {
-        return new ElasticsearchDelegateBeanPostProcessor();
     }
 }
