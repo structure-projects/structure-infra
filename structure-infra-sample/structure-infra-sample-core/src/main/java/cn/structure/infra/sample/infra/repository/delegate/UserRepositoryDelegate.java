@@ -1,5 +1,6 @@
 package cn.structure.infra.sample.infra.repository.delegate;
 
+import cn.structure.infra.repository.IQueryDelegate;
 import cn.structure.infra.repository.RepositoryDelegate;
 import cn.structure.infra.sample.domain.entity.UserEntity;
 

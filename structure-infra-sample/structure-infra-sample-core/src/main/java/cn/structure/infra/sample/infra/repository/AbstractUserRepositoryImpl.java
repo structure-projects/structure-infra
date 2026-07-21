@@ -16,10 +16,10 @@ import cn.structure.infra.sample.infra.repository.delegate.UserRepositoryDelegat
  * @version 1.0.2
  * @since 2026/6/28
  */
-public abstract class AbstractUserRepositoryImpl extends RepositoryFacade<UserEntity, Long> implements UserRepository {
+public abstract class AbstractUserRepositoryImpl extends RepositoryFacade<UserEntity, Long, UserRepositoryDelegate> implements UserRepository {
 
     @Override
     public UserEntity findByName(String name) {
-        return ((UserRepositoryDelegate) getDelegate()).findByName(name);
+        return getDelegate().findByName(name);
     }
 }

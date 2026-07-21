@@ -45,7 +45,8 @@ import org.springframework.context.annotation.Import;
 })
 @ComponentScan(basePackages = {
         "cn.structure.infra.sample.cqrs",
-        "cn.structure.infra.sample.infra",
+        "cn.structure.infra.sample.infra.po",
+        "cn.structure.infra.sample.infra.mapper",
         "cn.structure.infra.repository",
         "cn.structure.infra.mybatis.plus",
         "cn.structure.infra.elasticsearch"
