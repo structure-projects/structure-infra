@@ -1,0 +1,197 @@
+package cn.structure.infra.repository;
+
+import cn.structure.infra.annotations.ReadDelegate;
+import cn.structure.infra.annotations.WriteDelegate;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.stereotype.Component;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+@Slf4j
+@Component
+public class RepositoryBeanPostProcessor implements BeanPostProcessor, ApplicationContextAware {
+
+    private DefaultListableBeanFactory beanFactory;
+
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        this.beanFactory = (DefaultListableBeanFactory) applicationContext.getAutowireCapableBeanFactory();
+    }
+
+    @Override
+    public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+        if (bean instanceof CqrsRepositoryFacade) {
+            processCqrsFacade((CqrsRepositoryFacade<?, ?, ?, ?>) bean, beanName);
+        } else if (bean instanceof RepositoryFacade) {
+            processRepositoryFacade((RepositoryFacade<?, ?, ?>) bean, beanName);
+        }
+        return bean;
+    }
+
+    private void processCqrsFacade(CqrsRepositoryFacade<?, ?, ?, ?> facade, String beanName) {
+        Type[] typeArgs = resolveTypeArguments(facade.getClass(), CqrsRepositoryFacade.class);
+        if (typeArgs == null || typeArgs.length < 4) {
+            log.warn("Cannot resolve generic types for CqrsRepositoryFacade: {}", beanName);
+            return;
+        }
+
+        Class<?> writeDelegateType = getRawType(typeArgs[2]);
+        Class<?> readDelegateType = getRawType(typeArgs[3]);
+
+        if (writeDelegateType != null) {
+            Object writeDelegate = findWriteDelegate(writeDelegateType);
+            if (writeDelegate != null) {
+                setDelegate(facade, "delegate", writeDelegate);
+                log.info("Injected write delegate [{}] to CqrsRepositoryFacade [{}]",
+                        writeDelegate.getClass().getSimpleName(), beanName);
+            }
+        }
+
+        if (readDelegateType != null) {
+            Object readDelegate = findReadDelegate(readDelegateType);
+            if (readDelegate != null) {
+                setDelegate(facade, "readDelegate", readDelegate);
+                log.info("Injected read delegate [{}] to CqrsRepositoryFacade [{}]",
+                        readDelegate.getClass().getSimpleName(), beanName);
+            }
+        }
+    }
+
+    private void processRepositoryFacade(RepositoryFacade<?, ?, ?> facade, String beanName) {
+        Type[] typeArgs = resolveTypeArguments(facade.getClass(), RepositoryFacade.class);
+        if (typeArgs == null || typeArgs.length < 3) {
+            log.warn("Cannot resolve generic types for RepositoryFacade: {}", beanName);
+            return;
+        }
+
+        Class<?> delegateType = getRawType(typeArgs[2]);
+        if (delegateType != null) {
+            Object delegate = findWriteDelegate(delegateType);
+            if (delegate != null) {
+                setDelegate(facade, "delegate", delegate);
+                log.info("Injected delegate [{}] to RepositoryFacade [{}]",
+                        delegate.getClass().getSimpleName(), beanName);
+            }
+        }
+    }
+
+    private Object findWriteDelegate(Class<?> delegateType) {
+        Map<String, ?> beans = beanFactory.getBeansOfType(delegateType);
+        if (beans.isEmpty()) {
+            return null;
+        }
+
+        List<Object> candidates = new ArrayList<>(beans.values());
+        
+        Object writeDelegate = findByAnnotation(candidates, WriteDelegate.class);
+        if (writeDelegate != null) {
+            return writeDelegate;
+        }
+
+        Object noReadDelegate = findWithoutAnnotation(candidates, ReadDelegate.class);
+        if (noReadDelegate != null) {
+            return noReadDelegate;
+        }
+
+        return candidates.get(0);
+    }
+
+    private Object findReadDelegate(Class<?> delegateType) {
+        Map<String, ?> beans = beanFactory.getBeansOfType(delegateType);
+        if (beans.isEmpty()) {
+            return null;
+        }
+
+        List<Object> candidates = new ArrayList<>(beans.values());
+        
+        Object readDelegate = findByAnnotation(candidates, ReadDelegate.class);
+        if (readDelegate != null) {
+            return readDelegate;
+        }
+
+        return candidates.get(0);
+    }
+
+    private <A extends java.lang.annotation.Annotation> Object findByAnnotation(List<Object> candidates, Class<A> annotationClass) {
+        for (Object candidate : candidates) {
+            if (AnnotationUtils.findAnnotation(candidate.getClass(), annotationClass) != null) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private <A extends java.lang.annotation.Annotation> Object findWithoutAnnotation(List<Object> candidates, Class<A> annotationClass) {
+        for (Object candidate : candidates) {
+            if (AnnotationUtils.findAnnotation(candidate.getClass(), annotationClass) == null) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private void setDelegate(Object facade, String fieldName, Object delegate) {
+        try {
+            Field field = findField(facade.getClass(), fieldName);
+            if (field != null) {
+                field.setAccessible(true);
+                field.set(facade, delegate);
+            }
+        } catch (Exception e) {
+            log.error("Failed to inject delegate to field [{}] in [{}]: {}",
+                    fieldName, facade.getClass().getSimpleName(), e.getMessage());
+        }
+    }
+
+    private Field findField(Class<?> clazz, String fieldName) {
+        while (clazz != null) {
+            try {
+                return clazz.getDeclaredField(fieldName);
+            } catch (NoSuchFieldException e) {
+                clazz = clazz.getSuperclass();
+            }
+        }
+        return null;
+    }
+
+    private Type[] resolveTypeArguments(Class<?> clazz, Class<?> targetClass) {
+        Type genericSuperclass = clazz.getGenericSuperclass();
+        while (genericSuperclass != null) {
+            if (genericSuperclass instanceof ParameterizedType) {
+                ParameterizedType parameterizedType = (ParameterizedType) genericSuperclass;
+                Type rawType = parameterizedType.getRawType();
+                if (targetClass.equals(rawType)) {
+                    return parameterizedType.getActualTypeArguments();
+                }
+            }
+            clazz = clazz.getSuperclass();
+            if (clazz == null) {
+                break;
+            }
+            genericSuperclass = clazz.getGenericSuperclass();
+        }
+        return null;
+    }
+
+    private Class<?> getRawType(Type type) {
+        if (type instanceof Class) {
+            return (Class<?>) type;
+        } else if (type instanceof ParameterizedType) {
+            return (Class<?>) ((ParameterizedType) type).getRawType();
+        }
+        return null;
+    }
+}

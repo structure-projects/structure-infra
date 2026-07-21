@@ -3,8 +3,8 @@ package cn.structure.infra.repository;
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
 import java.util.Optional;
@@ -37,20 +37,24 @@ import java.util.Optional;
  *   <li>读操作优先走 readDelegate，失败回退到 baseDelegate</li>
  *   <li>提供统一的读操作执行框架（executeReadOperation）</li>
  * </ul>
+ * <p>
+ * 注入机制：
+ * - delegate（写代理）：由 RepositoryBeanPostProcessor 根据泛型类型和 @WriteDelegate/@ReadDelegate 注解注入
+ * - readDelegate（读代理）：由 RepositoryBeanPostProcessor 根据泛型类型和 @ReadDelegate 注解注入
  *
  * @param <T>  领域实体类型
  * @param <ID> 主键类型
  * @param <RD> 读委托类型（继承 IQueryDelegate）
  * @author chuck
- * @version 1.0.2
+ * @version 1.0.3
  * @since 2026/7/21
  */
 @Getter
+@Setter
 @Slf4j
 public class CqrsRepositoryFacade<T, ID, D extends RepositoryDelegate<T, ID>, RD extends IQueryDelegate<T, ID>>
         extends RepositoryFacade<T, ID, D> {
 
-    @Autowired(required = false)
     protected RD readDelegate;
 
     @Override

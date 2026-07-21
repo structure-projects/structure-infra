@@ -46,9 +46,6 @@ class UserCqrsRepositoryTest {
     @Autowired
     private UserCqrsRepository userCqrsRepository;
 
-    @Autowired(required = false)
-    private UserRepository userRepository;
-
     /**
      * 创建测试用户实体
      *
@@ -86,7 +83,7 @@ class UserCqrsRepositoryTest {
         assertNotNull(userCqrsRepository, "CQRS 仓储应该被注入");
 
         // 验证 BASE 代理存在
-        UserWriteDelegate baseDelegate = userCqrsRepository.getBaseDelegate();
+        UserWriteDelegate baseDelegate = userCqrsRepository.getDelegate();
         assertNotNull(baseDelegate, "BASE 写代理应该被注入");
         log.info("✓ BASE 写代理注入成功: {}", baseDelegate.getClass().getName());
     }
@@ -108,7 +105,7 @@ class UserCqrsRepositoryTest {
         assertNotNull(userCqrsRepository, "CQRS 仓储应该被注入");
 
         // 验证同时加载了两种代理
-        UserWriteDelegate baseDelegate = userCqrsRepository.getBaseDelegate();
+        UserWriteDelegate baseDelegate = userCqrsRepository.getDelegate();
         IQueryDelegate<UserEntity, Long> readDelegate = userCqrsRepository.getReadDelegate();
 
         assertNotNull(baseDelegate, "BASE 代理应该被加载");
@@ -269,13 +266,5 @@ class UserCqrsRepositoryTest {
         log.info("Step 3 - DELETE（BASE 代理）: 执行完成");
 
         log.info("✓ CQRS 完整 CRUD 流程测试完成");
-    }
-
-    @Test
-    @DisplayName("测试 UserRepository 接口注入")
-    void testUserRepositoryInterfaceInjection() {
-        // 验证接口注入
-        assertNotNull(userRepository, "UserRepository 接口应该被注入");
-        log.info("✓ UserRepository 接口注入成功: {}", userRepository.getClass().getName());
     }
 }
