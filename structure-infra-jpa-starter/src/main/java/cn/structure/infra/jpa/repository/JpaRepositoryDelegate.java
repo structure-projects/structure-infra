@@ -55,35 +55,105 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
 
     @Autowired
     protected EntityManager entityManager;
-    protected Class<E> entityClass;
-    protected Class<P> poClass;
-    protected Class<ID> idClass;
-    protected String idFieldName = "id";
+    private volatile Class<E> entityClass;
+    private volatile Class<P> poClass;
+    private volatile Class<ID> idClass;
+    private volatile String idFieldName;
 
     public JpaRepositoryDelegate() {
-        resolveGenericTypes();
-        resolveIdFieldName();
-        log.info("JpaRepositoryDelegate initialized: entity={}, po={}, id={}, idField={}",
-                entityClass != null ? entityClass.getSimpleName() : "null",
-                poClass != null ? poClass.getSimpleName() : "null",
-                idClass != null ? idClass.getSimpleName() : "null",
-                idFieldName);
+    }
+
+    @Override
+    public Class<E> getEntityClass() {
+        if (entityClass == null) {
+            synchronized (this) {
+                if (entityClass == null) {
+                    entityClass = resolveEntityClass();
+                    log.debug("Resolved entityClass: {}", entityClass != null ? entityClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return entityClass;
+    }
+
+    @Override
+    public Class<?> getPoClass() {
+        if (poClass == null) {
+            synchronized (this) {
+                if (poClass == null) {
+                    poClass = resolvePoClass();
+                    log.debug("Resolved poClass: {}", poClass != null ? poClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return poClass;
+    }
+
+    @Override
+    public Class<ID> getIdClass() {
+        if (idClass == null) {
+            synchronized (this) {
+                if (idClass == null) {
+                    idClass = resolveIdClass();
+                    log.debug("Resolved idClass: {}", idClass != null ? idClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return idClass;
+    }
+
+    @Override
+    public String getIdFieldName() {
+        if (idFieldName == null) {
+            synchronized (this) {
+                if (idFieldName == null) {
+                    idFieldName = resolveIdFieldName();
+                    log.debug("Resolved idFieldName: {}", idFieldName);
+                }
+            }
+        }
+        return idFieldName;
     }
 
     @SuppressWarnings("unchecked")
-    protected void resolveGenericTypes() {
-        this.entityClass = (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
-        this.poClass = (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
-        this.idClass = (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
+    private Class<E> resolveEntityClass() {
+        try {
+            return (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve entityClass: {}", e.getMessage());
+            return null;
+        }
     }
 
-    protected void resolveIdFieldName() {
-        if (poClass != null) {
-            Field idField = findFieldWithAnnotation(poClass, Id.class);
+    @SuppressWarnings("unchecked")
+    private Class<P> resolvePoClass() {
+        try {
+            return (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve poClass: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Class<ID> resolveIdClass() {
+        try {
+            return (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve idClass: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveIdFieldName() {
+        Class<?> poType = getPoClass();
+        if (poType != null) {
+            Field idField = findFieldWithAnnotation(poType, Id.class);
             if (idField != null) {
-                this.idFieldName = idField.getName();
+                return idField.getName();
             }
         }
+        return "id";
     }
 
     private Field findFieldWithAnnotation(Class<?> clazz, Class<?> annotationClass) {
@@ -96,26 +166,6 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
             return findFieldWithAnnotation(clazz.getSuperclass(), annotationClass);
         }
         return null;
-    }
-
-    @Override
-    public Class<E> getEntityClass() {
-        return entityClass;
-    }
-
-    @Override
-    public Class<?> getPoClass() {
-        return poClass;
-    }
-
-    @Override
-    public Class<ID> getIdClass() {
-        return idClass;
-    }
-
-    @Override
-    public String getIdFieldName() {
-        return idFieldName;
     }
 
     @Override

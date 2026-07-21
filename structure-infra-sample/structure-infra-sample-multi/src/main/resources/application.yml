@@ -1,0 +1,24 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: structure-infra-sample-multi
+  datasource:
+    url: jdbc:h2:mem:multi_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+
+structure:
+  infra:
+    multi-repository-enabled: true
+    default-repository-type: MYBATIS_PLUS
+
+logging:
+  level:
+    cn.structure.infra.repository: DEBUG
+    cn.structure.infra.sample.multi: DEBUG

@@ -22,7 +22,7 @@
 
     <modules>
         <module>structure-infra-sample-core</module>
-        <module>structure-infra-sample-mybatis</module>
+<!--        <module>structure-infra-sample-mybatis</module>-->
         <module>structure-infra-sample-jpa</module>
         <module>structure-infra-sample-mongodb</module>
         <module>structure-infra-sample-elasticsearch</module>
@@ -30,6 +30,7 @@
         <module>structure-infra-sample-stream</module>
         <module>structure-infra-sample-xxljob</module>
         <module>structure-infra-sample-schedule</module>
+        <module>structure-infra-sample-multi</module>
     </modules>
 
 </project>

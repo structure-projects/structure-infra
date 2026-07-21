@@ -2,6 +2,7 @@ package cn.structure.infra.repository;
 
 import cn.structure.infra.annotations.ReadDelegate;
 import cn.structure.infra.annotations.WriteDelegate;
+import cn.structure.infra.properties.InfraProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -22,23 +23,39 @@ import java.util.Map;
 
 @Slf4j
 @Component
-public class RepositoryBeanPostProcessor implements BeanPostProcessor, ApplicationContextAware {
+public class RepositoryBeanPostProcessor implements BeanPostProcessor, ApplicationContextAware, org.springframework.beans.factory.SmartInitializingSingleton {
 
     private DefaultListableBeanFactory beanFactory;
+
+    private InfraProperties infraProperties;
 
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         this.beanFactory = (DefaultListableBeanFactory) applicationContext.getAutowireCapableBeanFactory();
+        this.infraProperties = applicationContext.getBean(InfraProperties.class);
     }
 
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+        if (Boolean.TRUE.equals(infraProperties.getMultiRepositoryEnabled())) {
+            return bean;
+        }
         if (bean instanceof CqrsRepositoryFacade) {
             processCqrsFacade((CqrsRepositoryFacade<?, ?, ?, ?>) bean, beanName);
-        } else if (bean instanceof RepositoryFacade) {
-            processRepositoryFacade((RepositoryFacade<?, ?, ?>) bean, beanName);
         }
         return bean;
+    }
+
+    @Override
+    public void afterSingletonsInstantiated() {
+        if (Boolean.TRUE.equals(infraProperties.getMultiRepositoryEnabled())) {
+            log.info("Multi-repository enabled, skipping RepositoryBeanPostProcessor injection");
+            return;
+        }
+        Map<String, RepositoryFacade> facades = beanFactory.getBeansOfType(RepositoryFacade.class);
+        for (Map.Entry<String, RepositoryFacade> entry : facades.entrySet()) {
+            processRepositoryFacade(entry.getValue(), entry.getKey());
+        }
     }
 
     private void processCqrsFacade(CqrsRepositoryFacade<?, ?, ?, ?> facade, String beanName) {
@@ -95,7 +112,7 @@ public class RepositoryBeanPostProcessor implements BeanPostProcessor, Applicati
         }
 
         List<Object> candidates = new ArrayList<>(beans.values());
-        
+
         Object writeDelegate = findByAnnotation(candidates, WriteDelegate.class);
         if (writeDelegate != null) {
             return writeDelegate;

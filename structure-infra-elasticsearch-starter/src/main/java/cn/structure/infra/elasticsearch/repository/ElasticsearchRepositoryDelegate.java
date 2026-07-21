@@ -57,35 +57,105 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
 
     @Autowired
     protected ElasticsearchOperations elasticsearchOperations;
-    protected Class<E> entityClass;
-    protected Class<P> poClass;
-    protected Class<ID> idClass;
-    protected String idFieldName = "id";
+    private volatile Class<E> entityClass;
+    private volatile Class<P> poClass;
+    private volatile Class<ID> idClass;
+    private volatile String idFieldName;
 
     public ElasticsearchRepositoryDelegate() {
-        resolveGenericTypes();
-        resolveIdFieldName();
-        log.info("ElasticsearchRepositoryDelegate initialized: entity={}, po={}, id={}, idField={}",
-                entityClass != null ? entityClass.getSimpleName() : "null",
-                poClass != null ? poClass.getSimpleName() : "null",
-                idClass != null ? idClass.getSimpleName() : "null",
-                idFieldName);
+    }
+
+    @Override
+    public Class<E> getEntityClass() {
+        if (entityClass == null) {
+            synchronized (this) {
+                if (entityClass == null) {
+                    entityClass = resolveEntityClass();
+                    log.debug("Resolved entityClass: {}", entityClass != null ? entityClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return entityClass;
+    }
+
+    @Override
+    public Class<?> getPoClass() {
+        if (poClass == null) {
+            synchronized (this) {
+                if (poClass == null) {
+                    poClass = resolvePoClass();
+                    log.debug("Resolved poClass: {}", poClass != null ? poClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return poClass;
+    }
+
+    @Override
+    public Class<ID> getIdClass() {
+        if (idClass == null) {
+            synchronized (this) {
+                if (idClass == null) {
+                    idClass = resolveIdClass();
+                    log.debug("Resolved idClass: {}", idClass != null ? idClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return idClass;
+    }
+
+    @Override
+    public String getIdFieldName() {
+        if (idFieldName == null) {
+            synchronized (this) {
+                if (idFieldName == null) {
+                    idFieldName = resolveIdFieldName();
+                    log.debug("Resolved idFieldName: {}", idFieldName);
+                }
+            }
+        }
+        return idFieldName;
     }
 
     @SuppressWarnings("unchecked")
-    protected void resolveGenericTypes() {
-        this.entityClass = (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
-        this.poClass = (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
-        this.idClass = (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
+    private Class<E> resolveEntityClass() {
+        try {
+            return (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve entityClass: {}", e.getMessage());
+            return null;
+        }
     }
 
-    protected void resolveIdFieldName() {
-        if (poClass != null) {
-            Field idField = findFieldWithAnnotation(poClass, Id.class);
+    @SuppressWarnings("unchecked")
+    private Class<P> resolvePoClass() {
+        try {
+            return (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve poClass: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Class<ID> resolveIdClass() {
+        try {
+            return (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve idClass: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveIdFieldName() {
+        Class<?> poType = getPoClass();
+        if (poType != null) {
+            Field idField = findFieldWithAnnotation(poType, Id.class);
             if (idField != null) {
-                this.idFieldName = idField.getName();
+                return idField.getName();
             }
         }
+        return "id";
     }
 
     private Field findFieldWithAnnotation(Class<?> clazz, Class<?> annotationClass) {
@@ -98,26 +168,6 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
             return findFieldWithAnnotation(clazz.getSuperclass(), annotationClass);
         }
         return null;
-    }
-
-    @Override
-    public Class<E> getEntityClass() {
-        return entityClass;
-    }
-
-    @Override
-    public Class<?> getPoClass() {
-        return poClass;
-    }
-
-    @Override
-    public Class<ID> getIdClass() {
-        return idClass;
-    }
-
-    @Override
-    public String getIdFieldName() {
-        return idFieldName;
     }
 
     @Override
@@ -134,7 +184,7 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
     @Override
     public void removeById(ID id) {
         if (id != null) {
-            elasticsearchOperations.delete(String.valueOf(id), poClass);
+            elasticsearchOperations.delete(String.valueOf(id), getPoClass());
             log.debug("Removed entity: id={}", id);
         }
     }
@@ -144,7 +194,7 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
         if (id == null) {
             return null;
         }
-        P po = elasticsearchOperations.get(String.valueOf(id), poClass);
+        P po = elasticsearchOperations.get(String.valueOf(id), getPoClass());
         log.debug("Find by id: id={}, found={}", id, po != null);
         return toEntity(po);
     }
@@ -166,7 +216,7 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
         }
         P poCondition = toPo(condition);
         Query query = buildQuery(poCondition);
-        SearchHits<P> searchHits = elasticsearchOperations.search(query, poClass);
+        SearchHits<P> searchHits = elasticsearchOperations.search(query, getPoClass());
         P po = searchHits.hasSearchHits() ? searchHits.getSearchHit(0).getContent() : null;
         return toEntity(po);
     }
@@ -180,14 +230,14 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
     public List<E> queryList(E condition) {
         if (condition == null) {
             Query query = new CriteriaQuery(Criteria.where("*").exists());
-            SearchHits<P> searchHits = elasticsearchOperations.search(query, poClass);
+            SearchHits<P> searchHits = elasticsearchOperations.search(query, getPoClass());
             return searchHits.getSearchHits().stream()
                     .map(hit -> toEntity(hit.getContent()))
                     .collect(Collectors.toList());
         }
         P poCondition = toPo(condition);
         Query query = buildQuery(poCondition);
-        SearchHits<P> searchHits = elasticsearchOperations.search(query, poClass);
+        SearchHits<P> searchHits = elasticsearchOperations.search(query, getPoClass());
         return searchHits.getSearchHits().stream()
                 .map(hit -> toEntity(hit.getContent()))
                 .collect(Collectors.toList());
@@ -202,7 +252,7 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
         PageRequest pageRequest = PageRequest.of(pageNum, pageSize, Sort.unsorted());
         query.setPageable(pageRequest);
 
-        SearchHits<P> searchHits = elasticsearchOperations.search(query, poClass);
+        SearchHits<P> searchHits = elasticsearchOperations.search(query, getPoClass());
 
         ResPage<E> resPage = new ResPage<>();
         resPage.setCurrent((long) (pageNum + 1));
@@ -259,7 +309,7 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
     @Override
     public void removeBatchByIds(List<ID> ids) {
         if (ids != null && !ids.isEmpty()) {
-            ids.forEach(id -> elasticsearchOperations.delete(String.valueOf(id), poClass));
+            ids.forEach(id -> elasticsearchOperations.delete(String.valueOf(id), getPoClass()));
         }
     }
 
@@ -278,11 +328,11 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
     public long count(E condition) {
         if (condition == null) {
             Query query = new CriteriaQuery(Criteria.where("*").exists());
-            return elasticsearchOperations.count(query, poClass);
+            return elasticsearchOperations.count(query, getPoClass());
         }
         P poCondition = toPo(condition);
         Query query = buildQuery(poCondition);
-        return elasticsearchOperations.count(query, poClass);
+        return elasticsearchOperations.count(query, getPoClass());
     }
 
     @Override
