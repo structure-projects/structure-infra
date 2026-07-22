@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 
 /**
@@ -50,6 +51,10 @@ import org.springframework.context.annotation.Import;
         "cn.structure.infra.repository",
         "cn.structure.infra.mybatis.plus",
         "cn.structure.infra.elasticsearch"
+}, excludeFilters = {
+        @ComponentScan.Filter(type = FilterType.REGEX, pattern = "cn.structure.infra.sample.infra.repository.mybatis.*"),
+        @ComponentScan.Filter(type = FilterType.REGEX, pattern = "cn.structure.infra.sample.infra.repository.jpa.*"),
+        @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = cn.structure.infra.sample.InfraSampleApplication.class)
 })
 @MapperScan("cn.structure.infra.sample.infra.mapper")
 @Import({

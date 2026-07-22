@@ -170,6 +170,7 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
 
     @Override
     public E save(E entity) {
+        getPoClass();
         if (entity == null || entityManager == null || poClass == null) {
             return null;
         }
@@ -181,6 +182,7 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
 
     @Override
     public void removeById(ID id) {
+        getPoClass();
         if (id != null && entityManager != null && poClass != null) {
             P po = entityManager.find(poClass, id);
             if (po != null) {
@@ -192,6 +194,7 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
 
     @Override
     public E findById(ID id) {
+        getPoClass();
         if (id == null || entityManager == null || poClass == null) {
             return null;
         }
@@ -234,6 +237,7 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
 
     @Override
     public ResPage<E> queryPage(ReqPage reqPage) {
+        getPoClass();
         if (entityManager == null || poClass == null) {
             ResPage<E> emptyPage = new ResPage<>();
             emptyPage.setCurrent(1L);
@@ -286,6 +290,7 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
     }
 
     private List<E> findAll() {
+        getPoClass();
         if (entityManager == null || poClass == null) {
             return List.of();
         }
@@ -298,6 +303,7 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
     }
 
     private List<E> queryByCondition(E condition) {
+        getPoClass();
         if (entityManager == null || poClass == null) {
             return List.of();
         }
@@ -362,6 +368,8 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
 
     @Override
     public List<E> listByIds(List<ID> ids) {
+        getPoClass();
+        getIdFieldName();
         if (ids == null || ids.isEmpty() || entityManager == null || poClass == null) {
             return List.of();
         }
@@ -379,6 +387,7 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
 
     @Override
     public long count(E condition) {
+        getPoClass();
         if (entityManager == null || poClass == null) {
             return 0;
         }
@@ -426,6 +435,7 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
         if (entity == null) {
             return null;
         }
+        getPoClass();
         if (poClass == null) {
             return (P) entity;
         }

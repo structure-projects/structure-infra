@@ -22,7 +22,7 @@
 
     <modules>
         <module>structure-infra-sample-core</module>
-<!--        <module>structure-infra-sample-mybatis</module>-->
+        <module>structure-infra-sample-mybatis</module>
         <module>structure-infra-sample-jpa</module>
         <module>structure-infra-sample-mongodb</module>
         <module>structure-infra-sample-elasticsearch</module>

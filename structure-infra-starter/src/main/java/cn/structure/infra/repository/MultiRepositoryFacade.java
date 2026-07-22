@@ -7,25 +7,16 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @Slf4j
 public class MultiRepositoryFacade<T, ID, D extends RepositoryDelegate<T, ID>> extends RepositoryFacade<T, ID, D> {
 
-    @Getter
-    @Setter
-    private Map<RepositoryType, D> delegates = new HashMap<>();
+    private final Map<RepositoryType, D> delegates = new HashMap<>();
 
     @Getter
     @Setter
     private RepositoryType defaultType = RepositoryType.AUTO;
-
-    @Getter
-    @Setter
-    private D defaultDelegate;
 
     public void registerDelegate(RepositoryType type, D delegate) {
         delegates.put(type, delegate);
@@ -44,9 +35,9 @@ public class MultiRepositoryFacade<T, ID, D extends RepositoryDelegate<T, ID>> e
             return delegates.get(defaultType);
         }
 
-        if (defaultDelegate != null) {
-            log.debug("Using default delegate");
-            return defaultDelegate;
+        if (getDelegate() != null) {
+            log.debug("Using default delegate from parent");
+            return getDelegate();
         }
 
         if (!delegates.isEmpty()) {
@@ -56,6 +47,14 @@ public class MultiRepositoryFacade<T, ID, D extends RepositoryDelegate<T, ID>> e
         }
 
         throw new IllegalStateException("No repository delegate available");
+    }
+
+    public boolean hasDelegate(RepositoryType type) {
+        return delegates.containsKey(type);
+    }
+
+    public Set<RepositoryType> getRegisteredTypes() {
+        return Collections.unmodifiableSet(delegates.keySet());
     }
 
     @Override

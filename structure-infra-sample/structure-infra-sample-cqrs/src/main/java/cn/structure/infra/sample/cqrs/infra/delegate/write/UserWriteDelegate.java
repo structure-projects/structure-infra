@@ -3,9 +3,11 @@ package cn.structure.infra.sample.cqrs.infra.delegate.write;
 import cn.structure.infra.annotations.WriteDelegate;
 import cn.structure.infra.mybatis.plus.repository.MybatisPlusRepositoryDelegate;
 import cn.structure.infra.sample.domain.entity.UserEntity;
+import cn.structure.infra.sample.infra.mapper.UserMapper;
 import cn.structure.infra.sample.infra.po.MybatisUserPO;
 import cn.structure.infra.sample.infra.repository.delegate.UserRepositoryDelegate;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /**
@@ -23,8 +25,13 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
+@Primary
 @WriteDelegate
 public class UserWriteDelegate extends MybatisPlusRepositoryDelegate<UserEntity, MybatisUserPO, Long> implements UserRepositoryDelegate {
+
+    public UserWriteDelegate(UserMapper userMapper) {
+        this.baseMapper = userMapper;
+    }
 
     @Override
     public UserEntity findByName(String name) {

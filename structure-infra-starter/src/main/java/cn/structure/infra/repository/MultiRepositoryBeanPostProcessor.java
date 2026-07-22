@@ -104,10 +104,15 @@ public class MultiRepositoryBeanPostProcessor implements BeanPostProcessor, Appl
                                 facade.setDefaultType(defaultType);
                             }
 
-                            RepositoryDelegate firstDelegate = (RepositoryDelegate) typeDelegates.values().iterator().next();
-                            facade.setDefaultDelegate((RepositoryDelegate) firstDelegate);
+                            // 设置默认 delegate 到父类 RepositoryFacade 的 delegate 字段
+                            RepositoryDelegate<?, ?> defaultDelegate = typeDelegates.values().iterator().next();
+                            if (defaultType != null && defaultType != RepositoryType.AUTO && typeDelegates.containsKey(defaultType)) {
+                                defaultDelegate = typeDelegates.get(defaultType);
+                            }
+                            setParentDelegate(facade, defaultDelegate);
 
-                            log.info("Injected {} delegates to MultiRepositoryFacade [{}]", typeDelegates.size(), entry.getKey());
+                            log.info("Injected {} delegates to MultiRepositoryFacade [{}], default delegate: {}",
+                                    typeDelegates.size(), entry.getKey(), defaultDelegate.getClass().getSimpleName());
                         } else {
                             log.warn("No delegates found for entity class: {}", entityClass);
                         }
@@ -182,6 +187,20 @@ public class MultiRepositoryBeanPostProcessor implements BeanPostProcessor, Appl
             }
         }
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void setParentDelegate(MultiRepositoryFacade facade, RepositoryDelegate<?, ?> delegate) {
+        try {
+            Field field = findField(facade.getClass(), "delegate");
+            if (field != null) {
+                field.setAccessible(true);
+                field.set(facade, delegate);
+                log.debug("Set parent delegate [{}] to MultiRepositoryFacade", delegate.getClass().getSimpleName());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to set parent delegate: {}", e.getMessage());
+        }
     }
 
     @SuppressWarnings("unchecked")

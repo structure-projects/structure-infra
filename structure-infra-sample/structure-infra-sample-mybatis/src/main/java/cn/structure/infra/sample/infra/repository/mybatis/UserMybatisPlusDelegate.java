@@ -6,7 +6,6 @@ import cn.structure.infra.sample.infra.mapper.UserMapper;
 import cn.structure.infra.sample.infra.po.MybatisUserPO;
 import cn.structure.infra.sample.infra.repository.delegate.UserRepositoryDelegate;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -25,10 +24,14 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@AllArgsConstructor
 public class UserMybatisPlusDelegate extends MybatisPlusRepositoryDelegate<UserEntity, MybatisUserPO, Long> implements UserRepositoryDelegate {
 
     private final UserMapper userMapper;
+
+    public UserMybatisPlusDelegate(UserMapper userMapper) {
+        this.userMapper = userMapper;
+        this.baseMapper = userMapper;
+    }
 
     /**
      * 根据用户名查询用户

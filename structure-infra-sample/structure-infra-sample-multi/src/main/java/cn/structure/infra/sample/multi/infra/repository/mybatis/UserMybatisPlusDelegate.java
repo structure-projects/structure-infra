@@ -8,10 +8,12 @@ import cn.structure.infra.sample.multi.infra.repository.delegate.UserRepositoryD
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@Primary
 public class UserMybatisPlusDelegate extends MybatisPlusRepositoryDelegate<UserEntity, MybatisUserPO, Long> implements UserRepositoryDelegate {
 
     public UserMybatisPlusDelegate(UserMapper userMapper) {
