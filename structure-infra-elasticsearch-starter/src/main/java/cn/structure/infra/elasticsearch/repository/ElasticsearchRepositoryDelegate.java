@@ -79,7 +79,7 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
     }
 
     @Override
-    public Class<?> getPoClass() {
+    public Class<P> getPoClass() {
         if (poClass == null) {
             synchronized (this) {
                 if (poClass == null) {
