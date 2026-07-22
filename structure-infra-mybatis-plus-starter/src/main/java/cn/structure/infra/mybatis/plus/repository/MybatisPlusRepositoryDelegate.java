@@ -78,7 +78,7 @@ public class MybatisPlusRepositoryDelegate<E, P, ID> implements RepositoryDelega
     }
 
     @Override
-    public Class<?> getPoClass() {
+    public Class<P> getPoClass() {
         if (poClass == null) {
             synchronized (this) {
                 if (poClass == null) {

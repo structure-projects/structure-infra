@@ -77,7 +77,7 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
     }
 
     @Override
-    public Class<?> getPoClass() {
+    public Class<P> getPoClass() {
         if (poClass == null) {
             synchronized (this) {
                 if (poClass == null) {
@@ -436,7 +436,8 @@ public class JpaRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID
         if (entity == null) {
             return null;
         }
-        Class<P> poType = getPoClass();
+        @SuppressWarnings("unchecked")
+        Class<P> poType =  getPoClass();
         if (poType == null) {
             return (P) entity;
         }

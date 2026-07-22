@@ -48,7 +48,7 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
     }
 
     @Override
-    public Class<?> getPoClass() {
+    public Class<P> getPoClass() {
         if (poClass == null) {
             synchronized (this) {
                 if (poClass == null) {
