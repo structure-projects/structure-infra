@@ -344,11 +344,12 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
         if (po == null) {
             return null;
         }
-        if (entityClass == null) {
+        Class<E> entityType = getEntityClass();
+        if (entityType == null) {
             return (E) po;
         }
         try {
-            E entity = entityClass.getDeclaredConstructor().newInstance();
+            E entity = entityType.getDeclaredConstructor().newInstance();
             BeanUtils.copyProperties(po, entity);
             return entity;
         } catch (Exception e) {
@@ -360,11 +361,12 @@ public class ElasticsearchRepositoryDelegate<E, P, ID> implements RepositoryDele
         if (entity == null) {
             return null;
         }
-        if (poClass == null) {
+        Class<P> poType = getPoClass();
+        if (poType == null) {
             return (P) entity;
         }
         try {
-            P po = poClass.getDeclaredConstructor().newInstance();
+            P po = poType.getDeclaredConstructor().newInstance();
             BeanUtils.copyProperties(entity, po);
             return po;
         } catch (Exception e) {

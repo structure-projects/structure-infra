@@ -66,6 +66,37 @@ public class MockMongoConfiguration {
     private MongoTemplate createMongoTemplate() {
         MongoTemplate template = mock(MongoTemplate.class);
 
+        when(template.insert(anyList(), any(Class.class))).thenAnswer(invocation -> {
+            List<?> poList = invocation.getArgument(0);
+            for (Object po : poList) {
+                Class<?> poClass = po.getClass();
+                Map<Long, Object> classStore = dataStore.computeIfAbsent(poClass, k -> new HashMap<>());
+                try {
+                    Field idField = findIdField(poClass);
+                    if (idField != null) {
+                        idField.setAccessible(true);
+                        Object idValue = idField.get(po);
+                        Long id = null;
+                        if (idValue == null || (idValue instanceof Number && ((Number) idValue).longValue() == 0)) {
+                            id = idGenerator++;
+                            setIdValue(po, id);
+                        } else if (idValue instanceof Long) {
+                            id = (Long) idValue;
+                        } else if (idValue instanceof String) {
+                            id = Long.valueOf((String) idValue);
+                        } else if (idValue instanceof Number) {
+                            id = ((Number) idValue).longValue();
+                        }
+                        if (id != null) {
+                            classStore.put(id, po);
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            return poList;
+        });
+
         when(template.save(any())).thenAnswer(invocation -> {
             Object po = invocation.getArgument(0);
             Class<?> poClass = po.getClass();

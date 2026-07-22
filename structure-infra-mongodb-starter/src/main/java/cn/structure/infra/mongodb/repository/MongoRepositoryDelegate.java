@@ -4,6 +4,7 @@ import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
 import cn.structure.infra.repository.GenericTypeResolver;
 import cn.structure.infra.repository.RepositoryDelegate;
+import jakarta.persistence.Id;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,9 +13,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 
-import jakarta.persistence.Id;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
