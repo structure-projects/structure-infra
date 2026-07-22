@@ -10,9 +10,10 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import jakarta.persistence.Id;
+import org.springframework.beans.factory.annotation.Autowired;
+
 import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.util.Arrays;
@@ -53,37 +54,107 @@ import java.util.stream.Collectors;
 @Slf4j
 public class MybatisPlusRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID> {
 
-    @Autowired
+    @Autowired(required = false)
     protected BaseMapper<P> baseMapper;
-    protected Class<E> entityClass;
-    protected Class<P> poClass;
-    protected Class<ID> idClass;
-    protected String idFieldName = "id";
+    private volatile Class<E> entityClass;
+    private volatile Class<P> poClass;
+    private volatile Class<ID> idClass;
+    private volatile String idFieldName;
 
     public MybatisPlusRepositoryDelegate() {
-        resolveGenericTypes();
-        resolveIdFieldName();
-        log.info("MybatisPlusRepositoryDelegate initialized: entity={}, po={}, id={}, idField={}",
-                entityClass != null ? entityClass.getSimpleName() : "null",
-                poClass != null ? poClass.getSimpleName() : "null",
-                idClass != null ? idClass.getSimpleName() : "null",
-                idFieldName);
+    }
+
+    @Override
+    public Class<E> getEntityClass() {
+        if (entityClass == null) {
+            synchronized (this) {
+                if (entityClass == null) {
+                    entityClass = resolveEntityClass();
+                    log.debug("Resolved entityClass: {}", entityClass != null ? entityClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return entityClass;
+    }
+
+    @Override
+    public Class<P> getPoClass() {
+        if (poClass == null) {
+            synchronized (this) {
+                if (poClass == null) {
+                    poClass = resolvePoClass();
+                    log.debug("Resolved poClass: {}", poClass != null ? poClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return poClass;
+    }
+
+    @Override
+    public Class<ID> getIdClass() {
+        if (idClass == null) {
+            synchronized (this) {
+                if (idClass == null) {
+                    idClass = resolveIdClass();
+                    log.debug("Resolved idClass: {}", idClass != null ? idClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return idClass;
+    }
+
+    @Override
+    public String getIdFieldName() {
+        if (idFieldName == null) {
+            synchronized (this) {
+                if (idFieldName == null) {
+                    idFieldName = resolveIdFieldName();
+                    log.debug("Resolved idFieldName: {}", idFieldName);
+                }
+            }
+        }
+        return idFieldName;
     }
 
     @SuppressWarnings("unchecked")
-    protected void resolveGenericTypes() {
-        this.entityClass = (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
-        this.poClass = (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
-        this.idClass = (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
+    private Class<E> resolveEntityClass() {
+        try {
+            return (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve entityClass: {}", e.getMessage());
+            return null;
+        }
     }
 
-    protected void resolveIdFieldName() {
-        if (poClass != null) {
-            Field idField = findFieldWithAnnotation(poClass, Id.class);
+    @SuppressWarnings("unchecked")
+    private Class<P> resolvePoClass() {
+        try {
+            return (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve poClass: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Class<ID> resolveIdClass() {
+        try {
+            return (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve idClass: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveIdFieldName() {
+        Class<?> poType = getPoClass();
+        if (poType != null) {
+            Field idField = findFieldWithAnnotation(poType, Id.class);
             if (idField != null) {
-                this.idFieldName = idField.getName();
+                return idField.getName();
             }
         }
+        return "id";
     }
 
     private Field findFieldWithAnnotation(Class<?> clazz, Class<?> annotationClass) {
@@ -96,26 +167,6 @@ public class MybatisPlusRepositoryDelegate<E, P, ID> implements RepositoryDelega
             return findFieldWithAnnotation(clazz.getSuperclass(), annotationClass);
         }
         return null;
-    }
-
-    @Override
-    public Class<E> getEntityClass() {
-        return entityClass;
-    }
-
-    @Override
-    public Class<?> getPoClass() {
-        return poClass;
-    }
-
-    @Override
-    public Class<ID> getIdClass() {
-        return idClass;
-    }
-
-    @Override
-    public String getIdFieldName() {
-        return idFieldName;
     }
 
     @Override
@@ -298,7 +349,7 @@ public class MybatisPlusRepositoryDelegate<E, P, ID> implements RepositoryDelega
 
     private Field findIdField(Class<?> clazz) {
         try {
-            Field field = clazz.getDeclaredField(idFieldName);
+            Field field = clazz.getDeclaredField(getIdFieldName());
             return field;
         } catch (NoSuchFieldException e) {
             if (clazz.getSuperclass() != null && clazz.getSuperclass() != Object.class) {
@@ -331,7 +382,7 @@ public class MybatisPlusRepositoryDelegate<E, P, ID> implements RepositoryDelega
             return null;
         }
         try {
-            E entity = entityClass.getDeclaredConstructor().newInstance();
+            E entity = getEntityClass().getDeclaredConstructor().newInstance();
             BeanUtils.copyProperties(po, entity);
             return entity;
         } catch (Exception e) {
@@ -348,12 +399,13 @@ public class MybatisPlusRepositoryDelegate<E, P, ID> implements RepositoryDelega
                 .collect(Collectors.toList());
     }
 
+    @SuppressWarnings("unchecked")
     protected P toPo(E entity) {
         if (entity == null) {
             return null;
         }
         try {
-            P po = poClass.getDeclaredConstructor().newInstance();
+            P po = ((Class<P>) getPoClass()).getDeclaredConstructor().newInstance();
             BeanUtils.copyProperties(entity, po);
             return po;
         } catch (Exception e) {

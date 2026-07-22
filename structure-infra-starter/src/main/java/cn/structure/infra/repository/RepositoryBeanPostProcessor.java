@@ -2,6 +2,7 @@ package cn.structure.infra.repository;
 
 import cn.structure.infra.annotations.ReadDelegate;
 import cn.structure.infra.annotations.WriteDelegate;
+import cn.structure.infra.properties.InfraProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -26,64 +27,40 @@ public class RepositoryBeanPostProcessor implements BeanPostProcessor, Applicati
 
     private DefaultListableBeanFactory beanFactory;
 
+    private InfraProperties infraProperties;
+
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         this.beanFactory = (DefaultListableBeanFactory) applicationContext.getAutowireCapableBeanFactory();
+        this.infraProperties = applicationContext.getBean(InfraProperties.class);
     }
 
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+        if (Boolean.TRUE.equals(infraProperties.getMultiRepositoryEnabled())) {
+            return bean;
+        }
+        // 只处理 CQRS 场景，且只注入 readDelegate
         if (bean instanceof CqrsRepositoryFacade) {
-            processCqrsFacade((CqrsRepositoryFacade<?, ?, ?, ?>) bean, beanName);
-        } else if (bean instanceof RepositoryFacade) {
-            processRepositoryFacade((RepositoryFacade<?, ?, ?>) bean, beanName);
+            processCqrsReadDelegate((CqrsRepositoryFacade<?, ?, ?, ?>) bean, beanName);
         }
         return bean;
     }
 
-    private void processCqrsFacade(CqrsRepositoryFacade<?, ?, ?, ?> facade, String beanName) {
+    private void processCqrsReadDelegate(CqrsRepositoryFacade<?, ?, ?, ?> facade, String beanName) {
         Type[] typeArgs = resolveTypeArguments(facade.getClass(), CqrsRepositoryFacade.class);
         if (typeArgs == null || typeArgs.length < 4) {
             log.warn("Cannot resolve generic types for CqrsRepositoryFacade: {}", beanName);
             return;
         }
 
-        Class<?> writeDelegateType = getRawType(typeArgs[2]);
         Class<?> readDelegateType = getRawType(typeArgs[3]);
-
-        if (writeDelegateType != null) {
-            Object writeDelegate = findWriteDelegate(writeDelegateType);
-            if (writeDelegate != null) {
-                setDelegate(facade, "delegate", writeDelegate);
-                log.info("Injected write delegate [{}] to CqrsRepositoryFacade [{}]",
-                        writeDelegate.getClass().getSimpleName(), beanName);
-            }
-        }
-
         if (readDelegateType != null) {
             Object readDelegate = findReadDelegate(readDelegateType);
             if (readDelegate != null) {
                 setDelegate(facade, "readDelegate", readDelegate);
                 log.info("Injected read delegate [{}] to CqrsRepositoryFacade [{}]",
                         readDelegate.getClass().getSimpleName(), beanName);
-            }
-        }
-    }
-
-    private void processRepositoryFacade(RepositoryFacade<?, ?, ?> facade, String beanName) {
-        Type[] typeArgs = resolveTypeArguments(facade.getClass(), RepositoryFacade.class);
-        if (typeArgs == null || typeArgs.length < 3) {
-            log.warn("Cannot resolve generic types for RepositoryFacade: {}", beanName);
-            return;
-        }
-
-        Class<?> delegateType = getRawType(typeArgs[2]);
-        if (delegateType != null) {
-            Object delegate = findWriteDelegate(delegateType);
-            if (delegate != null) {
-                setDelegate(facade, "delegate", delegate);
-                log.info("Injected delegate [{}] to RepositoryFacade [{}]",
-                        delegate.getClass().getSimpleName(), beanName);
             }
         }
     }
@@ -95,7 +72,7 @@ public class RepositoryBeanPostProcessor implements BeanPostProcessor, Applicati
         }
 
         List<Object> candidates = new ArrayList<>(beans.values());
-        
+
         Object writeDelegate = findByAnnotation(candidates, WriteDelegate.class);
         if (writeDelegate != null) {
             return writeDelegate;

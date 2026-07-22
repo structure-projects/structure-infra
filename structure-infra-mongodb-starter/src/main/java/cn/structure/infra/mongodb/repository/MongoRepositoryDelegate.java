@@ -4,6 +4,7 @@ import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
 import cn.structure.infra.repository.GenericTypeResolver;
 import cn.structure.infra.repository.RepositoryDelegate;
+import jakarta.persistence.Id;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,75 +14,122 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 
-import jakarta.persistence.Id;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-/**
- * 基于 MongoDB 的 RepositoryDelegate 适配实现
- * <p>
- * 该类是 RepositoryDelegate SPI 在 MongoDB 存储类型下的标准实现，委托
- * {@link MongoTemplate} 完成文档的 CRUD 操作。它在仓储框架中扮演"具体存储适配层"的角色：
- * <ul>
- *   <li>上层由 {@code RepositoryFacade} 统一暴露给业务方，本类不直接面向业务</li>
- *   <li>当用户未提供自定义 Delegate 时，由 {@link MongoDelegateFactory} 自动创建本类实例</li>
- *   <li>当用户提供自定义 Delegate 子类时，由 {@link MongoDelegateBeanPostProcessor}
- *       在 Bean 初始化后自动注入 MongoTemplate 与实体类型</li>
- * </ul>
- * <p>
- * 实现说明：
- * <ul>
- *   <li>查询条件通过反射读取实体非空字段，组装为 {@link Criteria}（等值匹配）并拼装到 {@link Query}</li>
- *   <li>ID 字段名通过 PO 类的 {@link Id} 注解自动识别，默认为 "id"</li>
- *   <li>save 委托给 {@link MongoTemplate#save(Object)}，自动判断新增或更新（依据 _id 是否存在）</li>
- *   <li>分页使用 {@link PageRequest} + count，由 MongoTemplate 生成原生分页查询</li>
- *   <li>Entity ↔ PO 转换在此层完成，Facade 层只操作领域实体</li>
- * </ul>
- *
- * @param <E>  领域实体类型
- * @param <P>  持久化对象类型（MongoDB Document）
- * @param <ID> 主键类型
- * @author chuck
- * @version 1.0.3
- * @since 2026/6/28
- */
 @Slf4j
 public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, ID> {
 
     @Autowired
     protected MongoTemplate mongoTemplate;
-    protected Class<E> entityClass;
-    protected Class<P> poClass;
-    protected Class<ID> idClass;
-    protected String idFieldName = "id";
+
+    private volatile Class<E> entityClass;
+    private volatile Class<P> poClass;
+    private volatile Class<ID> idClass;
+    private volatile String idFieldName;
 
     public MongoRepositoryDelegate() {
-        resolveGenericTypes();
-        resolveIdFieldName();
-        log.info("MongoRepositoryDelegate initialized: entity={}, po={}, id={}, idField={}",
-                entityClass != null ? entityClass.getSimpleName() : "null",
-                poClass != null ? poClass.getSimpleName() : "null",
-                idClass != null ? idClass.getSimpleName() : "null",
-                idFieldName);
+    }
+
+    @Override
+    public Class<E> getEntityClass() {
+        if (entityClass == null) {
+            synchronized (this) {
+                if (entityClass == null) {
+                    entityClass = resolveEntityClass();
+                    log.debug("Resolved entityClass: {}", entityClass != null ? entityClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return entityClass;
+    }
+
+    @Override
+    public Class<P> getPoClass() {
+        if (poClass == null) {
+            synchronized (this) {
+                if (poClass == null) {
+                    poClass = resolvePoClass();
+                    log.debug("Resolved poClass: {}", poClass != null ? poClass.getSimpleName() : "null");
+                }
+            }
+        }
+        return poClass;
     }
 
     @SuppressWarnings("unchecked")
-    protected void resolveGenericTypes() {
-        this.entityClass = (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
-        this.poClass = (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
-        this.idClass = (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
+    private Class<P> getPoClassInternal() {
+        return (Class<P>) getPoClass();
     }
 
-    protected void resolveIdFieldName() {
-        if (poClass != null) {
-            Field idField = findFieldWithAnnotation(poClass, Id.class);
-            if (idField != null) {
-                this.idFieldName = idField.getName();
+    @Override
+    public Class<ID> getIdClass() {
+        if (idClass == null) {
+            synchronized (this) {
+                if (idClass == null) {
+                    idClass = resolveIdClass();
+                    log.debug("Resolved idClass: {}", idClass != null ? idClass.getSimpleName() : "null");
+                }
             }
         }
+        return idClass;
+    }
+
+    @Override
+    public String getIdFieldName() {
+        if (idFieldName == null) {
+            synchronized (this) {
+                if (idFieldName == null) {
+                    idFieldName = resolveIdFieldName();
+                    log.debug("Resolved idFieldName: {}", idFieldName);
+                }
+            }
+        }
+        return idFieldName;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Class<E> resolveEntityClass() {
+        try {
+            return (Class<E>) GenericTypeResolver.resolveEntityClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve entityClass: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Class<P> resolvePoClass() {
+        try {
+            return (Class<P>) GenericTypeResolver.resolvePoClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve poClass: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Class<ID> resolveIdClass() {
+        try {
+            return (Class<ID>) GenericTypeResolver.resolveIdClass(getClass());
+        } catch (Exception e) {
+            log.warn("Cannot resolve idClass: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveIdFieldName() {
+        Class<?> poType = getPoClass();
+        if (poType != null) {
+            Field idField = findFieldWithAnnotation(poType, Id.class);
+            if (idField != null) {
+                return idField.getName();
+            }
+        }
+        return "id";
     }
 
     private Field findFieldWithAnnotation(Class<?> clazz, Class<?> annotationClass) {
@@ -97,26 +145,6 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
     }
 
     @Override
-    public Class<E> getEntityClass() {
-        return entityClass;
-    }
-
-    @Override
-    public Class<?> getPoClass() {
-        return poClass;
-    }
-
-    @Override
-    public Class<ID> getIdClass() {
-        return idClass;
-    }
-
-    @Override
-    public String getIdFieldName() {
-        return idFieldName;
-    }
-
-    @Override
     public E save(E entity) {
         if (entity == null) {
             return null;
@@ -129,20 +157,20 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
 
     @Override
     public void removeById(ID id) {
-        if (id != null && poClass != null) {
-            Query query = new Query(Criteria.where(idFieldName).is(id));
-            mongoTemplate.remove(query, poClass);
+        if (id != null) {
+            Query query = new Query(Criteria.where(getIdFieldName()).is(id));
+            mongoTemplate.remove(query, getPoClassInternal());
             log.debug("Removed entity: id={}", id);
         }
     }
 
     @Override
     public E findById(ID id) {
-        if (id == null || poClass == null) {
+        if (id == null) {
             return null;
         }
-        Query query = new Query(Criteria.where(idFieldName).is(id));
-        P po = mongoTemplate.findOne(query, poClass);
+        Query query = new Query(Criteria.where(getIdFieldName()).is(id));
+        P po = mongoTemplate.findOne(query, getPoClassInternal());
         log.debug("Find by id: id={}, found={}", id, po != null);
         return toEntity(po);
     }
@@ -162,8 +190,9 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
         if (condition == null) {
             return null;
         }
-        Query query = buildQuery(condition);
-        P po = mongoTemplate.findOne(query, poClass);
+        P poCondition = toPo(condition);
+        Query query = buildQuery(poCondition);
+        P po = mongoTemplate.findOne(query, getPoClassInternal());
         return toEntity(po);
     }
 
@@ -175,14 +204,13 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
     @Override
     public List<E> queryList(E condition) {
         if (condition == null) {
-            return mongoTemplate.findAll(poClass).stream()
-                    .map(this::toEntity)
-                    .collect(Collectors.toList());
+            List<P> poList = mongoTemplate.findAll(getPoClassInternal());
+            return toEntityList(poList);
         }
-        Query query = buildQuery(condition);
-        return mongoTemplate.find(query, poClass).stream()
-                .map(this::toEntity)
-                .collect(Collectors.toList());
+        P poCondition = toPo(condition);
+        Query query = buildQuery(poCondition);
+        List<P> poList = mongoTemplate.find(query, getPoClassInternal());
+        return toEntityList(poList);
     }
 
     @Override
@@ -191,26 +219,31 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
         int pageSize = reqPage.getSize() != null ? reqPage.getSize() : 10;
 
         Query query = new Query();
-        long total = mongoTemplate.count(query, poClass);
+        long total = mongoTemplate.count(query, getPoClassInternal());
 
-        Query pageQuery = query.with(PageRequest.of(pageNum, pageSize, Sort.unsorted()));
-        List<E> records = mongoTemplate.find(pageQuery, poClass).stream()
-                .map(this::toEntity)
-                .collect(Collectors.toList());
+        List<E> pageContent;
+        if (total > 0) {
+            query.with(PageRequest.of(pageNum, pageSize, Sort.unsorted()));
+            pageContent = mongoTemplate.find(query, getPoClassInternal()).stream()
+                    .map(this::toEntity)
+                    .collect(Collectors.toList());
+        } else {
+            pageContent = List.of();
+        }
 
         ResPage<E> resPage = new ResPage<>();
         resPage.setCurrent((long) (pageNum + 1));
         resPage.setPages(total > 0 ? (total + pageSize - 1) / pageSize : 0);
         resPage.setSize((long) pageSize);
         resPage.setTotal(total);
-        resPage.setRecords(records);
+        resPage.setRecords(pageContent);
 
         log.debug("Query page: page={}, size={}, total={}, records={}",
-                pageNum + 1, pageSize, total, records.size());
+                pageNum + 1, pageSize, total, pageContent.size());
         return resPage;
     }
 
-    private Query buildQuery(E condition) {
+    private Query buildQuery(P condition) {
         Query query = new Query();
         try {
             Field[] fields = getAllFields(condition.getClass());
@@ -241,18 +274,18 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
         if (entities == null || entities.isEmpty()) {
             return List.of();
         }
-        return entities.stream()
+        List<P> poList = entities.stream()
                 .map(this::toPo)
-                .map(mongoTemplate::save)
-                .map(this::toEntity)
                 .collect(Collectors.toList());
+        mongoTemplate.insert(poList, getPoClassInternal());
+        return toEntityList(poList);
     }
 
     @Override
     public void removeBatchByIds(List<ID> ids) {
         if (ids != null && !ids.isEmpty()) {
-            Query query = new Query(Criteria.where(idFieldName).in(ids));
-            mongoTemplate.remove(query, poClass);
+            Query query = new Query(Criteria.where(getIdFieldName()).in(ids));
+            mongoTemplate.remove(query, getPoClassInternal());
         }
     }
 
@@ -261,19 +294,19 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
         if (ids == null || ids.isEmpty()) {
             return List.of();
         }
-        Query query = new Query(Criteria.where(idFieldName).in(ids));
-        return mongoTemplate.find(query, poClass).stream()
-                .map(this::toEntity)
-                .collect(Collectors.toList());
+        Query query = new Query(Criteria.where(getIdFieldName()).in(ids));
+        List<P> poList = mongoTemplate.find(query, getPoClassInternal());
+        return toEntityList(poList);
     }
 
     @Override
     public long count(E condition) {
         if (condition == null) {
-            return mongoTemplate.count(new Query(), poClass);
+            return mongoTemplate.count(new Query(), getPoClassInternal());
         }
-        Query query = buildQuery(condition);
-        return mongoTemplate.count(query, poClass);
+        P poCondition = toPo(condition);
+        Query query = buildQuery(poCondition);
+        return mongoTemplate.count(query, getPoClassInternal());
     }
 
     @Override
@@ -285,11 +318,8 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
         if (po == null) {
             return null;
         }
-        if (entityClass == null) {
-            return (E) po;
-        }
         try {
-            E entity = entityClass.getDeclaredConstructor().newInstance();
+            E entity = getEntityClass().getDeclaredConstructor().newInstance();
             BeanUtils.copyProperties(po, entity);
             return entity;
         } catch (Exception e) {
@@ -297,15 +327,22 @@ public class MongoRepositoryDelegate<E, P, ID> implements RepositoryDelegate<E, 
         }
     }
 
+    protected List<E> toEntityList(List<P> poList) {
+        if (poList == null || poList.isEmpty()) {
+            return List.of();
+        }
+        return poList.stream()
+                .map(this::toEntity)
+                .collect(Collectors.toList());
+    }
+
+    @SuppressWarnings("unchecked")
     protected P toPo(E entity) {
         if (entity == null) {
             return null;
         }
-        if (poClass == null) {
-            return (P) entity;
-        }
         try {
-            P po = poClass.getDeclaredConstructor().newInstance();
+            P po = ((Class<P>) getPoClass()).getDeclaredConstructor().newInstance();
             BeanUtils.copyProperties(entity, po);
             return po;
         } catch (Exception e) {

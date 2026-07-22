@@ -1,4 +1,4 @@
-package cn.structure.infra.sample.mongodb.config;
+package cn.structure.infra.sample.multi.config;
 
 import org.bson.Document;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -65,37 +65,6 @@ public class MockMongoConfiguration {
 
     private MongoTemplate createMongoTemplate() {
         MongoTemplate template = mock(MongoTemplate.class);
-
-        when(template.insert(anyList(), any(Class.class))).thenAnswer(invocation -> {
-            List<?> poList = invocation.getArgument(0);
-            for (Object po : poList) {
-                Class<?> poClass = po.getClass();
-                Map<Long, Object> classStore = dataStore.computeIfAbsent(poClass, k -> new HashMap<>());
-                try {
-                    Field idField = findIdField(poClass);
-                    if (idField != null) {
-                        idField.setAccessible(true);
-                        Object idValue = idField.get(po);
-                        Long id = null;
-                        if (idValue == null || (idValue instanceof Number && ((Number) idValue).longValue() == 0)) {
-                            id = idGenerator++;
-                            setIdValue(po, id);
-                        } else if (idValue instanceof Long) {
-                            id = (Long) idValue;
-                        } else if (idValue instanceof String) {
-                            id = Long.valueOf((String) idValue);
-                        } else if (idValue instanceof Number) {
-                            id = ((Number) idValue).longValue();
-                        }
-                        if (id != null) {
-                            classStore.put(id, po);
-                        }
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-            return poList;
-        });
 
         when(template.save(any())).thenAnswer(invocation -> {
             Object po = invocation.getArgument(0);
@@ -199,39 +168,34 @@ public class MockMongoConfiguration {
         });
 
         when(template.count(any(Query.class), any(Class.class))).thenAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
             Class<?> poClass = invocation.getArgument(1);
-            Map<Long, Object> classStore = dataStore.get(poClass);
-            return classStore != null ? (long) classStore.size() : 0L;
+            List<Object> allData = getAllData(poClass);
+            List<Object> results = filterByQuery(query, allData);
+            return (long) results.size();
         });
 
-        // ---------- Document 版本 API（低代码仓储使用） ----------
-
-        // collectionExists
         when(template.collectionExists(anyString())).thenAnswer(invocation -> {
             String collectionName = invocation.getArgument(0);
             return docCollections.containsKey(collectionName);
         });
 
-        // createCollection
         doAnswer(invocation -> {
             String collectionName = invocation.getArgument(0);
             docCollections.putIfAbsent(collectionName, new LinkedHashMap<>());
             return null;
         }).when(template).createCollection(anyString());
 
-        // dropCollection
         doAnswer(invocation -> {
             String collectionName = invocation.getArgument(0);
             docCollections.remove(collectionName);
             return null;
         }).when(template).dropCollection(anyString());
 
-        // indexOps
         IndexOperations indexOps = mock(IndexOperations.class);
         when(indexOps.createIndex(any(Index.class))).thenReturn("");
         when(template.indexOps(anyString())).thenReturn(indexOps);
 
-        // findOne with collectionName
         when(template.findOne(any(Query.class), any(Class.class), anyString())).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
             String collectionName = invocation.getArgument(2);
@@ -244,7 +208,6 @@ public class MockMongoConfiguration {
             return filtered.isEmpty() ? null : filtered.get(0);
         });
 
-        // find with collectionName
         when(template.find(any(Query.class), any(Class.class), anyString())).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
             String collectionName = invocation.getArgument(2);
@@ -256,7 +219,6 @@ public class MockMongoConfiguration {
             return filterDocsByQuery(query, allDocs);
         });
 
-        // insert with collectionName
         when(template.insert(any(Document.class), anyString())).thenAnswer(invocation -> {
             Document doc = invocation.getArgument(0);
             String collectionName = invocation.getArgument(1);
@@ -272,7 +234,6 @@ public class MockMongoConfiguration {
             return doc;
         });
 
-        // save with collectionName
         when(template.save(any(Document.class), anyString())).thenAnswer(invocation -> {
             Document doc = invocation.getArgument(0);
             String collectionName = invocation.getArgument(1);
@@ -287,7 +248,6 @@ public class MockMongoConfiguration {
             return doc;
         });
 
-        // updateFirst with collectionName
         when(template.updateFirst(any(Query.class), any(Update.class), anyString())).thenAnswer(invocation -> {
             String collectionName = invocation.getArgument(2);
             Map<Object, Document> collection = docCollections.get(collectionName);
@@ -301,7 +261,6 @@ public class MockMongoConfiguration {
             return null;
         });
 
-        // remove with query and collectionName
         doAnswer(invocation -> {
             Query query = invocation.getArgument(0);
             String collectionName = invocation.getArgument(1);
@@ -320,7 +279,6 @@ public class MockMongoConfiguration {
             return null;
         }).when(template).remove(any(Query.class), anyString());
 
-        // count with collectionName
         when(template.count(any(Query.class), anyString())).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
             String collectionName = invocation.getArgument(1);
@@ -347,21 +305,63 @@ public class MockMongoConfiguration {
         try {
             Field criteriaField = Query.class.getDeclaredField("criteria");
             criteriaField.setAccessible(true);
-            Object criteriaObj = criteriaField.get(query);
+            Object criteriaMap = criteriaField.get(query);
 
-            if (criteriaObj instanceof Criteria criteria) {
-                List<Map.Entry<String, Object>> conditions = extractConditions(criteria);
-                return data.stream()
-                        .filter(po -> matchesConditions(po, conditions))
-                        .collect(Collectors.toList());
+            if (criteriaMap instanceof Map) {
+                List<Map.Entry<String, Object>> conditions = new ArrayList<>();
+                for (Object entry : ((Map<?, ?>) criteriaMap).entrySet()) {
+                    Map.Entry<?, ?> mapEntry = (Map.Entry<?, ?>) entry;
+                    String key = mapEntry.getKey().toString();
+                    Object criteriaDef = mapEntry.getValue();
+                    Object value = extractIsValue(criteriaDef);
+                    if (value != null) {
+                        conditions.add(Map.entry(key, value));
+                    }
+                }
+                if (!conditions.isEmpty()) {
+                    return data.stream()
+                            .filter(po -> matchesConditions(po, conditions))
+                            .collect(Collectors.toList());
+                }
             }
         } catch (Exception ignored) {
         }
         return data;
     }
 
+    private Object extractIsValue(Object criteriaDef) {
+        try {
+            Field isValueField = Criteria.class.getDeclaredField("isValue");
+            isValueField.setAccessible(true);
+            Object value = isValueField.get(criteriaDef);
+            if (value != null && !"NOT_SET".equals(value.toString())) {
+                return value;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
     private List<Map.Entry<String, Object>> extractConditions(Criteria criteria) {
         List<Map.Entry<String, Object>> conditions = new ArrayList<>();
+        try {
+            Field criteriaChainField = Criteria.class.getDeclaredField("criteriaChain");
+            criteriaChainField.setAccessible(true);
+            Object criteriaChain = criteriaChainField.get(criteria);
+            if (criteriaChain instanceof List) {
+                for (Object c : (List<?>) criteriaChain) {
+                    extractSingleCondition(c, conditions);
+                }
+            } else {
+                extractSingleCondition(criteria, conditions);
+            }
+        } catch (Exception ignored) {
+            extractSingleCondition(criteria, conditions);
+        }
+        return conditions;
+    }
+
+    private void extractSingleCondition(Object criteria, List<Map.Entry<String, Object>> conditions) {
         try {
             Field keyField = Criteria.class.getDeclaredField("key");
             Field valueField = Criteria.class.getDeclaredField("value");
@@ -376,7 +376,6 @@ public class MockMongoConfiguration {
             }
         } catch (Exception ignored) {
         }
-        return conditions;
     }
 
     private boolean matchesConditions(Object po, List<Map.Entry<String, Object>> conditions) {
@@ -431,9 +430,6 @@ public class MockMongoConfiguration {
         }
     }
 
-    /**
-     * 提取 Update 对象中的更新值（Document 版本）
-     */
     private Map<String, Object> extractDocUpdateValues(Update update) {
         Map<String, Object> result = new HashMap<>();
         try {
@@ -459,31 +455,54 @@ public class MockMongoConfiguration {
         return result;
     }
 
-    /**
-     * 根据 Query 条件过滤 Document 列表
-     */
     private List<Document> filterDocsByQuery(Query query, List<Document> docs) {
         try {
             Field criteriaField = Query.class.getDeclaredField("criteria");
             criteriaField.setAccessible(true);
-            Object criteriaObj = criteriaField.get(query);
+            Object criteriaMap = criteriaField.get(query);
 
-            if (criteriaObj instanceof Criteria criteria) {
-                List<Map.Entry<String, Object>> conditions = extractDocConditions(criteria);
-                return docs.stream()
-                        .filter(doc -> matchesDocConditions(doc, conditions))
-                        .collect(Collectors.toList());
+            if (criteriaMap instanceof Map) {
+                List<Map.Entry<String, Object>> conditions = new ArrayList<>();
+                for (Object entry : ((Map<?, ?>) criteriaMap).entrySet()) {
+                    Map.Entry<?, ?> mapEntry = (Map.Entry<?, ?>) entry;
+                    String key = mapEntry.getKey().toString();
+                    Object criteriaDef = mapEntry.getValue();
+                    Object value = extractIsValue(criteriaDef);
+                    if (value != null) {
+                        conditions.add(Map.entry(key, value));
+                    }
+                }
+                if (!conditions.isEmpty()) {
+                    return docs.stream()
+                            .filter(doc -> matchesDocConditions(doc, conditions))
+                            .collect(Collectors.toList());
+                }
             }
         } catch (Exception ignored) {
         }
         return docs;
     }
 
-    /**
-     * 从 Criteria 中提取查询条件
-     */
     private List<Map.Entry<String, Object>> extractDocConditions(Criteria criteria) {
         List<Map.Entry<String, Object>> conditions = new ArrayList<>();
+        try {
+            Field criteriaChainField = Criteria.class.getDeclaredField("criteriaChain");
+            criteriaChainField.setAccessible(true);
+            Object criteriaChain = criteriaChainField.get(criteria);
+            if (criteriaChain instanceof List) {
+                for (Object c : (List<?>) criteriaChain) {
+                    extractSingleDocCondition(c, conditions);
+                }
+            } else {
+                extractSingleDocCondition(criteria, conditions);
+            }
+        } catch (Exception ignored) {
+            extractSingleDocCondition(criteria, conditions);
+        }
+        return conditions;
+    }
+
+    private void extractSingleDocCondition(Object criteria, List<Map.Entry<String, Object>> conditions) {
         try {
             Field keyField = Criteria.class.getDeclaredField("key");
             Field valueField = Criteria.class.getDeclaredField("value");
@@ -498,12 +517,8 @@ public class MockMongoConfiguration {
             }
         } catch (Exception ignored) {
         }
-        return conditions;
     }
 
-    /**
-     * 判断 Document 是否匹配查询条件
-     */
     private boolean matchesDocConditions(Document doc, List<Map.Entry<String, Object>> conditions) {
         for (Map.Entry<String, Object> condition : conditions) {
             String fieldName = condition.getKey();

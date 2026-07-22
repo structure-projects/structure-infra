@@ -30,6 +30,7 @@
         <module>structure-infra-sample-stream</module>
         <module>structure-infra-sample-xxljob</module>
         <module>structure-infra-sample-schedule</module>
+        <module>structure-infra-sample-multi</module>
     </modules>
 
 </project>

@@ -6,15 +6,17 @@ import cn.structure.common.vo.ResPage;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
 import java.util.Optional;
 
 @Getter
-@Setter
-@Slf4j
-public class RepositoryFacade<T, ID, D extends RepositoryDelegate<T, ID>> implements ICrudRepository<T, ID> {
+    @Setter
+    @Slf4j
+    public class RepositoryFacade<T, ID, D extends RepositoryDelegate<T, ID>> implements ICrudRepository<T, ID> {
 
+    @Autowired
     protected D delegate;
 
     protected Class<T> entityClass;

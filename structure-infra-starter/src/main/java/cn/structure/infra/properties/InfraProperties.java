@@ -1,6 +1,7 @@
 package cn.structure.infra.properties;
 
 import cn.structure.infra.event.EventChannel;
+import cn.structure.infra.repository.RepositoryType;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -55,4 +56,23 @@ public class InfraProperties {
      * @return 调度线程池大小
      */
     private Integer schedulePoolSize = Runtime.getRuntime().availableProcessors();
+
+    /**
+     * 是否启用多仓库支持
+     * <p>
+     * 启用后，框架会自动收集所有 RepositoryDelegate 实现，并创建 MultiRepositoryDelegate
+     * 支持根据上下文或配置动态切换仓库类型
+     *
+     * @return true 表示启用
+     */
+    private Boolean multiRepositoryEnabled = false;
+
+    /**
+     * 默认仓库类型
+     * <p>
+     * 当多仓库模式启用且未通过上下文指定仓库类型时，使用此配置
+     *
+     * @return 默认仓库类型
+     */
+    private RepositoryType defaultRepositoryType = RepositoryType.AUTO;
 }
