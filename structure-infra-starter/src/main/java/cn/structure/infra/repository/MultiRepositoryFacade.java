@@ -1,6 +1,5 @@
 package cn.structure.infra.repository;
 
-import cn.structure.common.repository.ICrudRepository;
 import cn.structure.common.vo.ReqPage;
 import cn.structure.common.vo.ResPage;
 import lombok.Getter;
@@ -12,7 +11,7 @@ import java.util.*;
 @Slf4j
 public class MultiRepositoryFacade<T, ID, D extends RepositoryDelegate<T, ID>> extends RepositoryFacade<T, ID, D> {
 
-    private final Map<RepositoryType, D> delegates = new HashMap<>();
+    protected final Map<RepositoryType, D> delegates = new HashMap<>();
 
     @Getter
     @Setter
