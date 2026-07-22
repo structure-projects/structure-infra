@@ -223,56 +223,56 @@ mvn spring-boot:run -pl structure-infra-sample/structure-infra-sample-schedule
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-starter</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 
 <!-- MyBatis Plus 适配 -->
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-mybatis-plus-starter</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 
 <!-- JPA 适配 -->
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-jpa-starter</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 
 <!-- MongoDB 适配 -->
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-mongodb-starter</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 
 <!-- Elasticsearch 适配 -->
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-elasticsearch-starter</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 
 <!-- 本地任务调度 -->
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-schedule-starter</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 
 <!-- XXL-Job 分布式任务调度 -->
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-xxljob-starter</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 
 <!-- 流式事件路由 -->
 <dependency>
     <groupId>cn.structured</groupId>
     <artifactId>structure-infra-stream-starter</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
